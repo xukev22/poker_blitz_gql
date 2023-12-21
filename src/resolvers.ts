@@ -437,7 +437,7 @@ const resolvers = {
             findNthPosAfterAliveIndex(optionIndex, table.seatingArrangement, 1)
           ];
         // force BB bet
-        // TODO extract
+        // TODO extract common pattern to helper in utils
         if (ptcBB.stack <= table.currentBB) {
           ptcBB.bettingHistory.push({
             action: BetActionType.ALL_IN_FORCED_BLIND,
