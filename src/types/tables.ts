@@ -22,7 +22,7 @@ export enum PokerVariants {
   PLO = "PLO",
 }
 
-// A Table is for information of an active table, 
+// A Table is for information of an active table,
 // which has a table id, the table overview info (see above), a currentSB value, a currentBB value, a currentST value, all in BBs.
 // a current hand number (from 0 to N, 0 means game not started, 1 to N means active game), an option (which stores whose turn it is by playerID, if null means that it is currently no ones turn),
 // also has a PlayerTableConnection, which stores all information the player and table share AND the ordering matters (i.e stores hole cards, betting history, stacks, etc.)
@@ -40,6 +40,7 @@ export default interface Table {
   turn?: Card;
   river?: Card;
   seatingArrangement: PlayerTableConnection[];
+  elos: number[];
 }
 
 // A PlayerTableConnection stores information about the player sitting at a table, bridges the playerID and tableID,

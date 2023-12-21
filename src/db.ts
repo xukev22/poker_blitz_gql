@@ -207,6 +207,7 @@ const db: Database = {
           bettingHistory: [{ action: BetActionType.FOLD }],
         },
       ],
+      elos: [500, 1900, 2000, 2250, 760, 25, 1050, 3040, 2040],
     },
     {
       id: 2,
@@ -286,11 +287,12 @@ const db: Database = {
         {
           tableID: 2,
           playerID: 50,
-          stack: 4387,
+          stack: 0,
           holeCards: null,
           bettingHistory: null,
         },
       ],
+      elos: [502, 1960, 750, 2252, 762, 27, 1052, 3042, 2042],
     },
     {
       id: 3,
@@ -375,6 +377,7 @@ const db: Database = {
           bettingHistory: null,
         },
       ],
+      elos: [502, 1902, 750, 2252, 762, 27, 1052, 3042, 2042],
     },
     {
       id: 4,
@@ -460,6 +463,7 @@ const db: Database = {
           bettingHistory: null,
         },
       ],
+      elos: [502, 1902, 750, 2252, 762, 27, 1052, 3042, 2042],
     },
     {
       id: 5,
@@ -543,6 +547,7 @@ const db: Database = {
           bettingHistory: null,
         },
       ],
+      elos: [502, 1902, 750, 2252, 762, 27, 1052, 3042, 2042],
     },
   ],
 };

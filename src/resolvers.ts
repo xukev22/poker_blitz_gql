@@ -1,6 +1,6 @@
 import { getPlayerID, getTableID } from "./context";
 import db from "./db";
-import { shuffleArray } from "./utils";
+import { calculateNewElo, shuffleArray } from "./utils";
 
 // Resolvers define how to fetch the types defined in your schema.
 const resolvers = {
@@ -24,6 +24,9 @@ const resolvers = {
     // should be restricted to admin client
     deletePlayer: (_, { id }) => {
       const player = db.players.find((p) => p.id == id);
+      if (!player) {
+        return db.players;
+      }
       if (player.table) {
         throw new Error(
           "Can't delete this player as it is connected to a table"
@@ -33,6 +36,9 @@ const resolvers = {
       return db.players;
     },
     updatePlayer: (_, args) => {
+      if (!db.players.find((p) => p.id == args.id)) {
+        throw new Error("Player not found");
+      }
       db.players = db.players.map((player) => {
         if (player.id == args.id) {
           if (player.table) {
@@ -61,6 +67,7 @@ const resolvers = {
         currentST: args.tableOverview.startingST,
         hand: 0,
         seatingArrangement: [],
+        elos: [],
       };
       db.tables.push(table);
       return table;
@@ -82,6 +89,10 @@ const resolvers = {
     },
     // should be restricted to admin client
     updateTable: (_, args) => {
+      if (!db.tables.find((t) => t.id == args.id)) {
+        throw new Error("Table not found");
+      }
+
       db.tables = db.tables.map((table) => {
         if (table.id == args.id) {
           if (table.seatingArrangement.length > 0) {
@@ -91,7 +102,7 @@ const resolvers = {
           }
           return {
             ...table,
-            ...args.edits,
+            tableOverview: { ...table.tableOverview, ...args.edits },
           };
         }
 
@@ -127,9 +138,11 @@ const resolvers = {
         stack: table.tableOverview.startingStack,
       });
 
+      table.elos.push(player.elo);
+
       return true;
     },
-    leaveTable: (_, args) => {
+    leaveTableQueue: (_, args) => {
       const playerID = args.playerID;
       const player = db.players.find((player) => player.id == playerID);
 
@@ -156,6 +169,70 @@ const resolvers = {
       delete player.table;
       table.seatingArrangement = table.seatingArrangement.filter(
         (ptc) => ptc.playerID != playerID
+      );
+
+      const index = table.elos.indexOf(player.elo);
+      if (index == -1) {
+        throw new Error(
+          "Data corrupted somewhere: elos list is not parallel to players' starting-elos"
+        );
+      }
+
+      table.elos.splice(index, 1);
+
+      return true;
+    },
+    leaveTable: (_, args) => {
+      const playerID = args.playerID;
+      const player = db.players.find((player) => player.id == playerID);
+
+      if (!player) {
+        throw new Error("Player not found");
+      }
+
+      if (!player.table) {
+        throw new Error("There is no table to leave");
+      }
+
+      const table = db.tables.find((table) => table.id == player.table);
+
+      if (!table) {
+        throw new Error(
+          "Data corrupted somewhere: this player has a reference to a nonexistent table"
+        );
+      }
+
+      if (
+        table.hand > 0 &&
+        table.seatingArrangement.find((ptc) => ptc.playerID == playerID).stack >
+          0
+      ) {
+        throw new Error(
+          "Can't leave table since your stack is more than zero, however you can forfeit at anytime"
+        );
+      }
+
+      delete player.table;
+      table.seatingArrangement = table.seatingArrangement.filter(
+        (ptc) => ptc.playerID != playerID
+      );
+
+      const zeroStackPlayerCount = table.seatingArrangement.filter(
+        (ptc) => ptc.stack <= 0
+      ).length;
+
+      const playersAtTableCount = table.seatingArrangement.length;
+
+      if (playersAtTableCount - zeroStackPlayerCount <= 1) {
+        throw new Error(
+          "Cannot forfeit since there are less than 2 players at the table"
+        );
+      }
+
+      player.elo = calculateNewElo(
+        player.elo,
+        playersAtTableCount - zeroStackPlayerCount,
+        table.elos
       );
 
       return true;
@@ -199,6 +276,60 @@ const resolvers = {
 
       return true;
     },
+    forfeitTable: (_, args) => {
+      const tableID = args.tableID;
+      const playerID = args.playerID;
+
+      const table = db.tables.find((t) => t.id == tableID);
+      const player = db.players.find((p) => p.id == playerID);
+
+      if (!player || !table) {
+        throw new Error("Player or table not present");
+      }
+
+      if (player.table != tableID) {
+        throw new Error("The player is not sitting at the given table");
+      }
+      // maybe check RIGHT HERE for other way around for data integrity, table's seating arrangement includes this playerID
+
+      if (table.hand == 0) {
+        throw new Error("Cannot forfeit since table hasn't started yet");
+      }
+
+      if (
+        table.seatingArrangement.find((ptc) => ptc.playerID == playerID)
+          .stack <= 0
+      ) {
+        throw new Error(
+          "Cannot forfeit since player has already been eliminated, player can leave instead if they do not choose to watch"
+        );
+      }
+
+      const zeroStackPlayerCount = table.seatingArrangement.filter(
+        (ptc) => ptc.stack <= 0
+      ).length;
+
+      const playersAtTableCount = table.seatingArrangement.length;
+
+      if (playersAtTableCount - zeroStackPlayerCount <= 1) {
+        throw new Error(
+          "Cannot forfeit since there are less than 2 players at the table"
+        );
+      }
+
+      player.elo = calculateNewElo(
+        player.elo,
+        playersAtTableCount - zeroStackPlayerCount,
+        table.elos
+      );
+
+      delete player.table;
+      table.seatingArrangement = table.seatingArrangement.filter(
+        (ptc) => ptc.playerID != playerID
+      );
+
+      return true;
+    },
   },
   Player: {
     table: (parent, args, context, info) => {
@@ -218,6 +349,9 @@ const resolvers = {
           bettingHistory: ptc.bettingHistory,
         };
       });
+    },
+    option: (parent, args, context, info) => {
+      return db.players.find((p) => p.id == parent.option);
     },
   },
 };

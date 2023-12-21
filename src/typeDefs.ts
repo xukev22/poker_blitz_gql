@@ -23,6 +23,7 @@ const typeDefs = `#graphql
     turn: Card
     river: Card
     seatingArrangement: [PlayerInfo!]!
+    elos: [Int!]!
   }
 
   type PlayerInfo {
@@ -117,8 +118,10 @@ const typeDefs = `#graphql
     updatePlayer(id: ID!, edits: EditPlayerInput!): Player
     updateTable(id: ID!, edits: EditTableInput!): Table
     joinTable(playerID: ID!, tableID: ID!): Boolean
+    leaveTableQueue(playerID: ID!): Boolean
     leaveTable(playerID: ID!): Boolean
     startTable(tableID: ID!): Boolean
+    forfeitTable(playerID: ID!, tableID: ID!): Boolean
   }
 
   input AddPlayerInput {
