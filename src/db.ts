@@ -6,6 +6,7 @@ import Table, {
   BetActionType,
 } from "./types/tables";
 
+// Mock database for testing
 interface Database {
   players: Player[];
   tables: Table[];
@@ -75,7 +76,7 @@ const db: Database = {
         startingBB: 3,
         startingST: 20,
         decisionTime: 5,
-        rotationsUntilBlindsIncrease: 4,
+        handsUntilBlindsIncrease: 4,
         blindIncreaseRatio: 1.49,
         variant: PokerVariants.NLH,
         maxPlayers: 10,
@@ -218,15 +219,15 @@ const db: Database = {
         startingBB: 6,
         startingST: 8,
         decisionTime: 9,
-        rotationsUntilBlindsIncrease: 4,
-        blindIncreaseRatio: 2.76,
-        variant: PokerVariants.NLH,
+        handsUntilBlindsIncrease: 50,
+        blindIncreaseRatio: 2,
+        variant: PokerVariants.PLO,
         maxPlayers: 10,
       },
       currentSB: 1,
       currentBB: 4,
       currentST: 14,
-      hand: 133,
+      hand: 465,
       seatingArrangement: [
         {
           tableID: 2,
@@ -252,7 +253,7 @@ const db: Database = {
         {
           tableID: 2,
           playerID: 20,
-          stack: 3693,
+          stack: 0,
           holeCards: null,
           bettingHistory: null,
         },
@@ -273,7 +274,7 @@ const db: Database = {
         {
           tableID: 2,
           playerID: 38,
-          stack: 4922,
+          stack: 0,
           holeCards: null,
           bettingHistory: null,
         },
@@ -303,7 +304,7 @@ const db: Database = {
         startingBB: 3,
         startingST: 10,
         decisionTime: 8,
-        rotationsUntilBlindsIncrease: 4,
+        handsUntilBlindsIncrease: 4,
         blindIncreaseRatio: 2.32,
         variant: PokerVariants.NLH,
         maxPlayers: 9,
@@ -388,7 +389,7 @@ const db: Database = {
         startingBB: 5,
         startingST: 12,
         decisionTime: 6,
-        rotationsUntilBlindsIncrease: 4,
+        handsUntilBlindsIncrease: 4,
         blindIncreaseRatio: 3.76,
         variant: PokerVariants.NLH,
         maxPlayers: 8,
@@ -474,7 +475,7 @@ const db: Database = {
         startingBB: 3,
         startingST: 12,
         decisionTime: 4,
-        rotationsUntilBlindsIncrease: 5,
+        handsUntilBlindsIncrease: 5,
         blindIncreaseRatio: 1.68,
         variant: PokerVariants.PLO,
         maxPlayers: 8,

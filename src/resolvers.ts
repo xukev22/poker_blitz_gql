@@ -1,6 +1,14 @@
 import { getPlayerID, getTableID } from "./context";
 import db from "./db";
-import { calculateNewElo, shuffleArray } from "./utils";
+import { BetActionType, PokerVariants } from "./types/tables";
+import {
+  calculateNewElo,
+  shuffleArray,
+  calculateInitHandOption,
+  dealUniqueHoleCards,
+  calculateNewBlindMultiplier,
+  findNthPosAfterAliveIndex,
+} from "./utils";
 
 // Resolvers define how to fetch the types defined in your schema.
 const resolvers = {
@@ -9,6 +17,9 @@ const resolvers = {
     tables: () => db.tables,
     getPlayer: (_, { id }) => {
       return db.players.find((p) => p.id == id);
+    },
+    getTable: (_, { id }) => {
+      return db.tables.find((t) => t.id == id);
     },
   },
   Mutation: {
@@ -217,23 +228,23 @@ const resolvers = {
         (ptc) => ptc.playerID != playerID
       );
 
-      const zeroStackPlayerCount = table.seatingArrangement.filter(
-        (ptc) => ptc.stack <= 0
-      ).length;
+      // const zeroStackPlayerCount = table.seatingArrangement.filter(
+      //   (ptc) => ptc.stack <= 0
+      // ).length;
 
-      const playersAtTableCount = table.seatingArrangement.length;
+      // const playersAtTableCount = table.seatingArrangement.length;
 
-      if (playersAtTableCount - zeroStackPlayerCount <= 1) {
-        throw new Error(
-          "Cannot forfeit since there are less than 2 players at the table"
-        );
-      }
+      // if (playersAtTableCount - zeroStackPlayerCount <= 1) {
+      //   throw new Error(
+      //     "Cannot leave since there are less than 2 players at the table"
+      //   );
+      // }
 
-      player.elo = calculateNewElo(
-        player.elo,
-        playersAtTableCount - zeroStackPlayerCount,
-        table.elos
-      );
+      // player.elo = calculateNewElo(
+      //   player.elo,
+      //   playersAtTableCount - zeroStackPlayerCount,
+      //   table.elos
+      // );
 
       return true;
     },
@@ -272,7 +283,7 @@ const resolvers = {
         };
       });
 
-      table.option = table.seatingArrangement[0].playerID;
+      delete table.option;
 
       return true;
     },
@@ -327,6 +338,199 @@ const resolvers = {
       table.seatingArrangement = table.seatingArrangement.filter(
         (ptc) => ptc.playerID != playerID
       );
+
+      return true;
+    },
+    startHand: (_, args) => {
+      // get table by ID
+      const tableID = args.tableID;
+      const table = db.tables.find((t) => t.id == tableID);
+
+      if (!table) {
+        throw new Error("This table does not exist");
+      }
+
+      if (table.hand == 0) {
+        throw new Error("Cannot start a hand since table has not started yet");
+      }
+
+      if (table.option) {
+        throw new Error(
+          "Cannot start a hand since there is a hand in progress"
+        );
+      }
+
+      // reset hole cards and betting history
+      table.seatingArrangement = table.seatingArrangement.map((ptc) => {
+        return {
+          ...ptc,
+          holeCards: [],
+          bettingHistory: [],
+        };
+      });
+
+      // modify blinds
+      let blindMultiplier = 1;
+      if (
+        table.tableOverview.blindIncreaseRatio &&
+        table.tableOverview.handsUntilBlindsIncrease
+      ) {
+        console.log("both not null");
+        blindMultiplier = calculateNewBlindMultiplier(
+          table.hand,
+          table.tableOverview.blindIncreaseRatio,
+          table.tableOverview.handsUntilBlindsIncrease
+        );
+      }
+      table.currentSB = Math.round(
+        table.tableOverview.startingSB * blindMultiplier
+      );
+      table.currentBB = Math.round(
+        table.tableOverview.startingBB * blindMultiplier
+      );
+      table.currentST = Math.round(
+        table.tableOverview.startingST * blindMultiplier
+      );
+
+      // initialize option, sometimes is reinitialized depending on table size:
+      // NOTE THIS DOES NOT PERFECTLY WORK YET RIGHT AFTER PLAYERS ARE ELIMINATED
+      table.option = calculateInitHandOption(
+        table.hand,
+        table.seatingArrangement
+      );
+
+      // deal unique hole cards to alive players depending on the variant
+      // NOTE THIS CURRENTLY ONLY SUPPORTS NLH, PLO
+      table.seatingArrangement = dealUniqueHoleCards(
+        table.seatingArrangement,
+        table.tableOverview.variant == PokerVariants.NLH ? 2 : 4
+      );
+
+      // get index of starting player
+      let optionIndex = table.seatingArrangement.findIndex(
+        (ptc) => ptc.playerID == table.option
+      );
+
+      if (optionIndex == -1) {
+        throw new Error(
+          "Data corrupted somewhere: playerID option not found in seating arrangement"
+        );
+      }
+
+      // defensive check, already handled in dealUniqueHoleCards
+      if (
+        table.seatingArrangement.length < 2 ||
+        table.seatingArrangement.length > 10
+      ) {
+        throw new Error("Amount of players at table is invalid");
+      }
+
+      const alivePlayerCount = table.seatingArrangement.filter(
+        (ptc) => ptc.stack > 0
+      ).length;
+
+      // if only 2 players alive, no SB, use BB and ST
+      if (alivePlayerCount == 2) {
+        const ptcBB = table.seatingArrangement[optionIndex];
+        const ptcST =
+          table.seatingArrangement[
+            findNthPosAfterAliveIndex(optionIndex, table.seatingArrangement, 1)
+          ];
+        // force BB bet
+        // TODO extract
+        if (ptcBB.stack <= table.currentBB) {
+          ptcBB.bettingHistory.push({
+            action: BetActionType.ALL_IN_FORCED_BLIND,
+            amount: ptcBB.stack,
+          });
+          ptcBB.stack = 0;
+        } else {
+          ptcBB.bettingHistory.push({
+            action: BetActionType.BB,
+            amount: table.currentBB,
+          });
+          ptcBB.stack -= table.currentBB;
+        }
+        // force ST bet
+        if (ptcST.stack <= table.currentST) {
+          ptcST.bettingHistory.push({
+            action: BetActionType.ALL_IN_FORCED_BLIND,
+            amount: ptcST.stack,
+          });
+          ptcST.stack = 0;
+        } else {
+          ptcST.bettingHistory.push({
+            action: BetActionType.ST,
+            amount: table.currentST,
+          });
+          ptcST.stack -= table.currentST;
+        }
+      } else {
+        // otherwise we have a hand where all the blinds are used, aka more than 2 players left
+        const ptcSB = table.seatingArrangement[optionIndex];
+        const ptcBB =
+          table.seatingArrangement[
+            findNthPosAfterAliveIndex(optionIndex, table.seatingArrangement, 1)
+          ];
+        const ptcST =
+          table.seatingArrangement[
+            findNthPosAfterAliveIndex(optionIndex, table.seatingArrangement, 2)
+          ];
+        // force SB bet
+        if (ptcSB.stack <= table.currentSB) {
+          ptcSB.bettingHistory.push({
+            action: BetActionType.ALL_IN_FORCED_BLIND,
+            amount: ptcSB.stack,
+          });
+          ptcSB.stack = 0;
+        } else {
+          ptcSB.bettingHistory.push({
+            action: BetActionType.SB,
+            amount: table.currentSB,
+          });
+          ptcSB.stack -= table.currentSB;
+        }
+        // force BB bet
+        if (ptcBB.stack <= table.currentBB) {
+          ptcBB.bettingHistory.push({
+            action: BetActionType.ALL_IN_FORCED_BLIND,
+            amount: ptcBB.stack,
+          });
+          ptcBB.stack = 0;
+        } else {
+          ptcBB.bettingHistory.push({
+            action: BetActionType.BB,
+            amount: table.currentBB,
+          });
+          ptcBB.stack -= table.currentBB;
+        }
+        // force ST bet
+        if (ptcST.stack <= table.currentST) {
+          ptcST.bettingHistory.push({
+            action: BetActionType.ALL_IN_FORCED_BLIND,
+            amount: ptcST.stack,
+          });
+          ptcST.stack = 0;
+        } else {
+          ptcST.bettingHistory.push({
+            action: BetActionType.ST,
+            amount: table.currentST,
+          });
+          ptcST.stack -= table.currentST;
+        }
+
+        // change option to UTG if necessary
+        if (alivePlayerCount != 3) {
+          table.option =
+            table.seatingArrangement[
+              findNthPosAfterAliveIndex(
+                optionIndex,
+                table.seatingArrangement,
+                3
+              )
+            ].playerID;
+        }
+      }
 
       return true;
     },

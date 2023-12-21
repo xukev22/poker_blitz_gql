@@ -45,7 +45,7 @@ const typeDefs = `#graphql
     startingBB: Int!
     startingST: Int!
     decisionTime: Int!
-    rotationsUntilBlindsIncrease: Int
+    handsUntilBlindsIncrease: Int
     blindIncreaseRatio: Float
     variant: PokerVariants!
     maxPlayers: Int!
@@ -68,6 +68,7 @@ const typeDefs = `#graphql
     ALL_IN_BET
     ALL_IN_CALL
     ALL_IN_RAISE
+    ALL_IN_FORCED_BLIND
     SHOW
     SHOWDOWN_WAITING
     MUCK
@@ -108,6 +109,7 @@ const typeDefs = `#graphql
     players: [Player]
     tables: [Table]
     getPlayer(id: ID!): Player
+    getTable(id: ID!): Table
   }
 
   type Mutation {
@@ -122,6 +124,8 @@ const typeDefs = `#graphql
     leaveTable(playerID: ID!): Boolean
     startTable(tableID: ID!): Boolean
     forfeitTable(playerID: ID!, tableID: ID!): Boolean
+    startHand(tableID: ID!): Boolean
+    #TODO endhand? endtable?
   }
 
   input AddPlayerInput {
@@ -135,7 +139,7 @@ const typeDefs = `#graphql
     startingBB: Int!
     startingST: Int!
     decisionTime: Int!
-    rotationsUntilBlindsIncrease: Int
+    handsUntilBlindsIncrease: Int
     blindIncreaseRatio: Float
     variant: PokerVariants!
     maxPlayers: Int!
@@ -152,7 +156,7 @@ const typeDefs = `#graphql
     startingBB: Int
     startingST: Int
     decisionTime: Int
-    rotationsUntilBlindsIncrease: Int
+    handsUntilBlindsIncrease: Int
     blindIncreaseRatio: Float
     variant: PokerVariants
     maxPlayers: Int
