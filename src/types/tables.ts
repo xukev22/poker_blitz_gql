@@ -38,6 +38,7 @@ export default interface Table {
   currentST: number;
   hand: number;
   option?: number;
+  bettingLead?: number;
   flop?: Card[];
   turn?: Card;
   river?: Card;

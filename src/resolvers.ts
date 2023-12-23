@@ -1,6 +1,10 @@
 import { getPlayerID, getTableID } from "./context";
 import db from "./db";
-import { BetActionType, PokerVariants } from "./types/tables";
+import {
+  BetActionType,
+  PlayerTableConnection,
+  PokerVariants,
+} from "./types/tables";
 import {
   calculateNewElo,
   shuffleArray,
@@ -8,6 +12,8 @@ import {
   dealUniqueHoleCards,
   calculateNewBlindMultiplier,
   findNthPosAfterAliveIndex,
+  canCheck,
+  isBettingActionDone,
 } from "./utils";
 
 // Resolvers define how to fetch the types defined in your schema.
@@ -155,23 +161,7 @@ const resolvers = {
     },
     leaveTableQueue: (_, args) => {
       const playerID = args.playerID;
-      const player = db.players.find((player) => player.id == playerID);
-
-      if (!player) {
-        throw new Error("Player not found");
-      }
-
-      if (!player.table) {
-        throw new Error("There is no table to leave");
-      }
-
-      const table = db.tables.find((table) => table.id == player.table);
-
-      if (!table) {
-        throw new Error(
-          "Data corrupted somewhere: this player has a reference to a nonexistent table"
-        );
-      }
+      const { player, table } = getPlayerAndTableByPlayerID(playerID);
 
       if (table.hand > 0) {
         throw new Error("Can't leave table since game has already started!");
@@ -195,23 +185,7 @@ const resolvers = {
     },
     leaveTable: (_, args) => {
       const playerID = args.playerID;
-      const player = db.players.find((player) => player.id == playerID);
-
-      if (!player) {
-        throw new Error("Player not found");
-      }
-
-      if (!player.table) {
-        throw new Error("There is no table to leave");
-      }
-
-      const table = db.tables.find((table) => table.id == player.table);
-
-      if (!table) {
-        throw new Error(
-          "Data corrupted somewhere: this player has a reference to a nonexistent table"
-        );
-      }
+      const { player, table } = getPlayerAndTableByPlayerID(playerID);
 
       if (
         table.hand > 0 &&
@@ -228,23 +202,7 @@ const resolvers = {
         (ptc) => ptc.playerID != playerID
       );
 
-      // const zeroStackPlayerCount = table.seatingArrangement.filter(
-      //   (ptc) => ptc.stack <= 0
-      // ).length;
-
-      // const playersAtTableCount = table.seatingArrangement.length;
-
-      // if (playersAtTableCount - zeroStackPlayerCount <= 1) {
-      //   throw new Error(
-      //     "Cannot leave since there are less than 2 players at the table"
-      //   );
-      // }
-
-      // player.elo = calculateNewElo(
-      //   player.elo,
-      //   playersAtTableCount - zeroStackPlayerCount,
-      //   table.elos
-      // );
+      // NOTE when you leave your elo has already been updated, so you dont do so here
 
       return true;
     },
@@ -269,10 +227,10 @@ const resolvers = {
       table.currentBB = table.tableOverview.startingBB;
       table.currentST = table.tableOverview.startingST;
 
+      // defensive, not necessary
       delete table.flop;
       delete table.turn;
       delete table.river;
-
       table.seatingArrangement = shuffleArray(table.seatingArrangement);
       table.seatingArrangement = table.seatingArrangement.map((ptc) => {
         return {
@@ -288,24 +246,8 @@ const resolvers = {
       return true;
     },
     forfeitTable: (_, args) => {
-      const tableID = args.tableID;
       const playerID = args.playerID;
-
-      const table = db.tables.find((t) => t.id == tableID);
-      const player = db.players.find((p) => p.id == playerID);
-
-      if (!player || !table) {
-        throw new Error("Player or table not present");
-      }
-
-      if (player.table != tableID) {
-        throw new Error("The player is not sitting at the given table");
-      }
-      // maybe check RIGHT HERE for other way around for data integrity, table's seating arrangement includes this playerID
-
-      if (table.hand == 0) {
-        throw new Error("Cannot forfeit since table hasn't started yet");
-      }
+      const { player, table } = getPlayerAndTableByPlayerID(playerID);
 
       if (
         table.seatingArrangement.find((ptc) => ptc.playerID == playerID)
@@ -360,6 +302,7 @@ const resolvers = {
         );
       }
 
+      // defensive, not necessary
       // reset hole cards and betting history
       table.seatingArrangement = table.seatingArrangement.map((ptc) => {
         return {
@@ -375,7 +318,6 @@ const resolvers = {
         table.tableOverview.blindIncreaseRatio &&
         table.tableOverview.handsUntilBlindsIncrease
       ) {
-        console.log("both not null");
         blindMultiplier = calculateNewBlindMultiplier(
           table.hand,
           table.tableOverview.blindIncreaseRatio,
@@ -437,7 +379,8 @@ const resolvers = {
             findNthPosAfterAliveIndex(optionIndex, table.seatingArrangement, 1)
           ];
         // force BB bet
-        // TODO extract common pattern to helper in utils
+        // TODO extract common pattern to helper in utils,
+        // especially once you figure out how call/raise/allins should work
         if (ptcBB.stack <= table.currentBB) {
           ptcBB.bettingHistory.push({
             action: BetActionType.ALL_IN_FORCED_BLIND,
@@ -532,6 +475,91 @@ const resolvers = {
         }
       }
 
+      if (
+        table.seatingArrangement.filter((ptc) => {
+          ptc.bettingHistory.filter(
+            (pokerAction) =>
+              pokerAction.action == BetActionType.ALL_IN_FORCED_BLIND
+          ).length > 0;
+        }).length == alivePlayerCount
+      ) {
+        table.option == null;
+      } else {
+        let maxBetSeen = 0;
+        let bettingLeadID = null;
+        for (const ptc of table.seatingArrangement) {
+          if (
+            ptc.bettingHistory.length > 0 &&
+            ptc.bettingHistory[0].amount > maxBetSeen
+          ) {
+            maxBetSeen = ptc.bettingHistory[0].amount;
+            bettingLeadID = ptc.playerID;
+          }
+        }
+        table.bettingLead = bettingLeadID;
+      }
+      return true;
+    },
+    fold: (_, args) => {
+      const playerID = args.playerID;
+      const { player, table } = getPlayerAndTableByPlayerID(playerID);
+
+      if (table.option != playerID) {
+        throw new Error("It is not this player's turn");
+      }
+
+      table.seatingArrangement
+        .find((ptc) => ptc.playerID == playerID)
+        .bettingHistory.push({ action: BetActionType.FOLD });
+
+      if (isBettingActionDone(table)) {
+        table.option = null;
+      } else {
+        table.option =
+          table.seatingArrangement[
+            findNthPosAfterAliveIndex(
+              table.seatingArrangement.findIndex(
+                (ptc) => ptc.playerID == table.option
+              ),
+              table.seatingArrangement,
+              1
+            )
+          ].playerID;
+      }
+      return true;
+    },
+    check: (_, args) => {
+      const playerID = args.playerID;
+      const { player, table } = getPlayerAndTableByPlayerID(playerID);
+
+      if (table.option != playerID) {
+        throw new Error("It is not this player's turn");
+      }
+
+      if (canCheck(playerID, table.seatingArrangement)) {
+        table.seatingArrangement
+          .find((ptc) => ptc.playerID == playerID)
+          .bettingHistory.push({ action: BetActionType.CHECK });
+      } else {
+        throw new Error(
+          "You cannot check as you are facing a bet bigger than your current bet"
+        );
+      }
+
+      if (isBettingActionDone(table)) {
+        table.option = null;
+      } else {
+        table.seatingArrangement[
+          findNthPosAfterAliveIndex(
+            table.seatingArrangement.findIndex(
+              (ptc) => ptc.playerID == table.option
+            ),
+            table.seatingArrangement,
+            1
+          )
+        ].playerID;
+      }
+
       return true;
     },
   },
@@ -557,7 +585,35 @@ const resolvers = {
     option: (parent, args, context, info) => {
       return db.players.find((p) => p.id == parent.option);
     },
+    bettingLead: (parent, args, context, info) => {
+      return db.players.find((p) => p.id == parent.bettingLead);
+    },
   },
 };
+
+// Returns the reference to the player and corresponding table they are sitting at,
+// throwing if the player doesnt exist, or if the player is not sitting at a table,
+// or in the rare case that data may be corrupted: the table does not contain the playerID
+function getPlayerAndTableByPlayerID(playerID: number) {
+  const player = db.players.find((player) => player.id == playerID);
+
+  if (!player) {
+    throw new Error("Player not found");
+  }
+
+  if (!player.table) {
+    throw new Error("There is no table player is sitting at");
+  }
+
+  const table = db.tables.find((table) => table.id == player.table);
+
+  if (!table) {
+    throw new Error(
+      "Data corrupted somewhere: this player has a reference to a nonexistent table"
+    );
+  }
+
+  return { player, table };
+}
 
 export default resolvers;

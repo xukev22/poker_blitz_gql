@@ -19,6 +19,7 @@ const typeDefs = `#graphql
     currentST: Int!
     hand: Int!
     option: Player
+    bettingLead: Player
     flop: [Card!]
     turn: Card
     river: Card
@@ -123,9 +124,15 @@ const typeDefs = `#graphql
     leaveTableQueue(playerID: ID!): Boolean
     leaveTable(playerID: ID!): Boolean
     startTable(tableID: ID!): Boolean
-    forfeitTable(playerID: ID!, tableID: ID!): Boolean
+    forfeitTable(playerID: ID!): Boolean
     startHand(tableID: ID!): Boolean
     #TODO endhand? endtable?
+    fold(playerID: ID!): Boolean
+    check(playerID: ID!): Boolean
+    #call(playerID: ID!): Boolean
+    #bet(playerID: ID!, betAmount: Number): Boolean
+    #raise(playerID: ID!, raiseAmount: Number!): Boolean
+    #allIn(playerID: ID!): Boolean
   }
 
   input AddPlayerInput {

@@ -1,4 +1,4 @@
-import { Card, Suit, Value } from "./types/tables";
+import Table, { BetActionType, Card, Suit, Value } from "./types/tables";
 import { PlayerTableConnection } from "./types/tables";
 
 // Returns a new array that is a shuffled version of the given array
@@ -150,4 +150,111 @@ export function findNthPosAfterAliveIndex(
   throw new Error(
     "Data corrupted somewhere: should have found an alive player before iterating over whole list"
   );
+}
+
+// Returns whether or not the given player could check, given it is their turn
+export function canCheck(
+  playerID: number,
+  seatingArrangement: PlayerTableConnection[]
+): boolean {
+  const myPtc = seatingArrangement.find((ptc) => ptc.playerID == playerID);
+  let myPrevBet = 0;
+  if (myPtc.bettingHistory.length > 0) {
+    const prevPokerAction =
+      myPtc.bettingHistory[myPtc.bettingHistory.length - 1];
+    if (prevPokerAction.amount) {
+      myPrevBet = prevPokerAction.amount;
+    }
+  }
+
+  let maxBetSeen = 0;
+  for (const ptc of seatingArrangement) {
+    if (ptc.playerID == myPtc.playerID) {
+      continue;
+    }
+    let betAmount = 0;
+    if (ptc.bettingHistory.length > 0) {
+      const prevPokerAction = ptc.bettingHistory[ptc.bettingHistory.length - 1];
+      if (prevPokerAction.amount) {
+        betAmount = prevPokerAction.amount;
+      }
+    }
+    if (betAmount && betAmount > maxBetSeen) {
+      maxBetSeen = betAmount;
+    }
+  }
+
+  return maxBetSeen <= myPrevBet;
+}
+
+export function isBettingActionDone(table: Table): boolean {
+  const alivePlayers = table.seatingArrangement.filter((ptc) => ptc.stack > 0);
+  const bettingLeadID = table.bettingLead;
+
+  const bettingLeadPlayer = table.seatingArrangement.find(
+    (ptc) => ptc.playerID == bettingLeadID
+  );
+  const bettingLeadIndex = table.seatingArrangement.indexOf(bettingLeadPlayer);
+  if (bettingLeadIndex == -1) {
+    throw new Error(
+      "Data corrupted somewhere: betting lead player was not found in table seating arrangement"
+    );
+  }
+  const betCount = table.seatingArrangement.find(
+    (ptc) => ptc.playerID == bettingLeadID
+  ).bettingHistory.length;
+
+  let foldCount = 0;
+  for (const ptc of alivePlayers) {
+    if (ptc.playerID == bettingLeadID) {
+      continue;
+    }
+    if (
+      ptc.bettingHistory.length > 0 &&
+      ptc.bettingHistory[ptc.bettingHistory.length - 1].action ==
+        BetActionType.FOLD
+    ) {
+      foldCount++;
+    }
+  }
+  if (foldCount == alivePlayers.length - 1) {
+    return true;
+  }
+
+  for (const ptc of alivePlayers) {
+    if (ptc.playerID == bettingLeadID) {
+      continue;
+    }
+    const thisPtc = table.seatingArrangement.find(
+      (ptc) => ptc.playerID == bettingLeadID
+    );
+    if (table.seatingArrangement.indexOf(thisPtc) > bettingLeadIndex) {
+      if (thisPtc.bettingHistory.length != betCount) {
+        return false;
+      }
+      if (!thisPtc.bettingHistory[betCount - 1].amount) {
+        continue;
+      }
+      if (
+        bettingLeadPlayer.bettingHistory[betCount - 1].amount !=
+        thisPtc.bettingHistory[betCount - 1].amount
+      ) {
+        return false;
+      }
+    } else {
+      if (thisPtc.bettingHistory.length + 1 != betCount) {
+        return false;
+      }
+      if (!thisPtc.bettingHistory[betCount].amount) {
+        continue;
+      }
+      if (
+        bettingLeadPlayer.bettingHistory[betCount - 1].amount !=
+        thisPtc.bettingHistory[betCount].amount
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
