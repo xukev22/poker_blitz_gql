@@ -17,7 +17,10 @@ const typeDefs = `#graphql
     currentSB: Int!
     currentBB: Int!
     currentST: Int!
-    hand: Int!
+    tableInProgress: Boolean!
+    handInProgress: Boolean!
+    pot: [PotEntry!]
+    hand: Int
     option: Player
     bettingLead: Player
     flop: [Card!]
@@ -27,15 +30,20 @@ const typeDefs = `#graphql
     elos: [Int!]!
   }
 
+  type PotEntry {
+    key: Int!
+    value: [PokerAction!]!
+  }
+
   type PlayerInfo {
     player: Player!
     stack: Int!
     holeCards: [Card!]
-    bettingHistory: [PokerAction!]
   }
 
   type PokerAction {
     action: BetActionType!
+    stage: BettingStage
     amount: Int
   }
 
@@ -50,6 +58,15 @@ const typeDefs = `#graphql
     blindIncreaseRatio: Float
     variant: PokerVariants!
     maxPlayers: Int!
+  }
+
+  enum BettingStage {
+    PREFLOP
+    FLOP
+    TURN
+    RIVER
+    SHOWDOWN
+    RUNOUT
   }
 
   enum PokerVariants {
@@ -129,7 +146,8 @@ const typeDefs = `#graphql
     #TODO endhand? endtable?
     fold(playerID: ID!): Boolean
     check(playerID: ID!): Boolean
-    #call(playerID: ID!): Boolean
+    call(playerID: ID!): Boolean
+    #TODO
     #bet(playerID: ID!, betAmount: Number): Boolean
     #raise(playerID: ID!, raiseAmount: Number!): Boolean
     #allIn(playerID: ID!): Boolean

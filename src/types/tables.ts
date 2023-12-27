@@ -36,7 +36,11 @@ export default interface Table {
   currentSB: number;
   currentBB: number;
   currentST: number;
-  hand: number;
+  tableInProgress: boolean;
+  handInProgress: boolean;
+  bettingStage?: BettingStage;
+  pot?: Map<number, PokerAction[]>;
+  hand?: number;
   option?: number;
   bettingLead?: number;
   flop?: Card[];
@@ -44,6 +48,15 @@ export default interface Table {
   river?: Card;
   seatingArrangement: PlayerTableConnection[];
   elos: number[];
+}
+
+export enum BettingStage {
+  PREFLOP = "PREFLOP",
+  FLOP = "FLOP",
+  TURN = "TURN",
+  RIVER = "RIVER",
+  SHOWDOWN = "SHOWDOWN",
+  RUNOUT = "RUNOUT",
 }
 
 // A PlayerTableConnection stores information about the player sitting at a table,
@@ -57,13 +70,13 @@ export interface PlayerTableConnection {
   tableID: number;
   stack: number;
   holeCards?: Card[];
-  bettingHistory?: PokerAction[];
 }
 
 // All numeric values are integers
 // amount is optional when it is not applicable to action type
 export interface PokerAction {
   action: BetActionType;
+  stage: BettingStage;
   amount?: number;
 }
 
