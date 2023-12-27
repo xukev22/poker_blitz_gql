@@ -20,6 +20,7 @@ const typeDefs = `#graphql
     tableInProgress: Boolean!
     handInProgress: Boolean!
     pot: [PotEntryMostRecent!]
+    potSize: Int
     bettingLog: [PotEntryAll!]
     hand: Int
     option: Player

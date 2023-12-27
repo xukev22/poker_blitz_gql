@@ -1,6 +1,6 @@
 import { getPlayerID, getTableID } from "./context";
 import db from "./db";
-import Table, { BetActionType, BettingStage } from "./types/tables";
+import { BetActionType } from "./types/tables";
 import {
   calculateNewElo,
   canCheck,
@@ -366,11 +366,16 @@ const resolvers = {
 
       if (canCall(playerID, table)) {
         const bettingLeadAmount = table.pot.get(table.bettingLead).amount;
+
+        const playerTotalBetsAmount = table.pot.get(playerID).amount;
+        const amountToCall = bettingLeadAmount - playerTotalBetsAmount;
+
         const playerAtTable = table.seatingArrangement.find(
           (ptc) => ptc.playerID == playerID
         );
-        if (bettingLeadAmount < playerAtTable.stack) {
-          playerAtTable.stack -= bettingLeadAmount;
+        if (amountToCall < playerAtTable.stack) {
+          playerAtTable.stack -= amountToCall;
+          table.potSize += amountToCall;
           table.bettingLog.get(playerID).push({
             action: BetActionType.CALL,
             stage: table.bettingStage,
@@ -381,14 +386,15 @@ const resolvers = {
           playerPot.amount = bettingLeadAmount;
           playerPot.stage = table.bettingStage;
         } else {
+          table.potSize += playerAtTable.stack;
           table.bettingLog.get(playerID).push({
             action: BetActionType.ALL_IN_CALL,
             stage: table.bettingStage,
-            amount: bettingLeadAmount,
+            amount: playerAtTable.stack,
           });
           const playerPot = table.pot.get(playerID);
           playerPot.action = BetActionType.ALL_IN_CALL;
-          playerPot.amount = playerAtTable.stack;
+          playerPot.amount = playerAtTable.stack + playerTotalBetsAmount;
           playerPot.stage = table.bettingStage;
           playerAtTable.stack = 0;
         }

@@ -40,6 +40,7 @@ export default interface Table {
   handInProgress: boolean;
   bettingStage?: BettingStage;
   pot?: Map<number, PokerAction>;
+  potSize?: number;
   bettingLog?: Map<number, PokerAction[]>;
   hand?: number;
   option?: number;

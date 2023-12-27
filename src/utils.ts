@@ -167,6 +167,7 @@ export function initHandVars(table: Table): void {
   table.bettingStage = BettingStage.PREFLOP;
   table.pot = new Map<number, PokerAction>();
   table.bettingLog = new Map<number, PokerAction[]>();
+  table.potSize = 0;
 
   // defensive
 
@@ -257,6 +258,7 @@ export function initHandVars(table: Table): void {
           amount: ptcBB.stack,
         },
       ]);
+      table.potSize += ptcBB.stack;
       ptcBB.stack = 0;
     } else {
       table.pot.set(ptcBB.playerID, {
@@ -271,6 +273,7 @@ export function initHandVars(table: Table): void {
           amount: table.currentBB,
         },
       ]);
+      table.potSize += table.currentBB;
       ptcBB.stack -= table.currentBB;
     }
     // force ST bet
@@ -287,6 +290,7 @@ export function initHandVars(table: Table): void {
           amount: ptcST.stack,
         },
       ]);
+      table.potSize += ptcST.stack;
       ptcST.stack = 0;
     } else {
       table.pot.set(ptcST.playerID, {
@@ -301,6 +305,7 @@ export function initHandVars(table: Table): void {
           amount: ptcST.stack,
         },
       ]);
+      table.potSize += table.currentST;
       ptcST.stack -= table.currentST;
     }
   } else {
@@ -328,6 +333,7 @@ export function initHandVars(table: Table): void {
           amount: ptcSB.stack,
         },
       ]);
+      table.potSize += ptcSB.stack;
       ptcSB.stack = 0;
     } else {
       table.pot.set(ptcSB.playerID, {
@@ -342,6 +348,7 @@ export function initHandVars(table: Table): void {
           amount: ptcSB.stack,
         },
       ]);
+      table.potSize += table.currentSB;
       ptcSB.stack -= table.currentSB;
     }
     // force BB bet
@@ -358,6 +365,7 @@ export function initHandVars(table: Table): void {
           amount: ptcBB.stack,
         },
       ]);
+      table.potSize += ptcBB.stack;
       ptcBB.stack = 0;
     } else {
       table.pot.set(ptcBB.playerID, {
@@ -372,6 +380,7 @@ export function initHandVars(table: Table): void {
           amount: table.currentBB,
         },
       ]);
+      table.potSize += table.currentBB;
       ptcBB.stack -= table.currentBB;
     }
     // force ST bet
@@ -388,6 +397,7 @@ export function initHandVars(table: Table): void {
           amount: ptcST.stack,
         },
       ]);
+      table.potSize += ptcST.stack;
       ptcST.stack = 0;
     } else {
       table.pot.set(ptcST.playerID, {
@@ -402,6 +412,7 @@ export function initHandVars(table: Table): void {
           amount: ptcST.stack,
         },
       ]);
+      table.potSize += table.currentST;
       ptcST.stack -= table.currentST;
     }
 
@@ -440,6 +451,7 @@ export function initTableVars(table: Table): void {
 
   // defensive, reset everything
   table.hand = 0;
+  table.potSize = 0;
   delete table.option;
   delete table.pot;
   delete table.bettingLog;
@@ -520,7 +532,9 @@ export function canCheck(playerID: number, table: Table): boolean {
 }
 
 // TODO now
-export function canCall(playerID: number, table: Table): boolean {}
+export function canCall(playerID: number, table: Table): boolean {
+  // throw if no betting lead
+}
 
 // TODO now this is wrong
 export function isBettingActionDone(table: Table): boolean {
@@ -613,122 +627,116 @@ export function notRunoutOrShowdownForCallCheckOrFold(table: Table) {
 }
 
 export function advanceAction(table: Table, playerID: number): void {
-  // if (
-  //   table.bettingStage == BettingStage.SHOWDOWN ||
-  //   table.bettingStage == BettingStage.RUNOUT
-  // ) {
-  //   throw new Error(
-  //     "Action cannot be advanced for these, these are handled on their own"
-  //   );
-  // }
-  // // advance betting stage or pass the turn
-  // if (isBettingActionDone(table)) {
-  //   const alivePlayerCount = table.seatingArrangement.filter(
-  //     (ptc) => ptc.stack > 0
-  //   ).length;
-  //   delete table.option;
-  //   // if everyone fold then give pot to remaining player
-  //   // TODO later
-  //   console.log("give all pot to remaining player");
-  //   // if everyone is all in make it runout
-  //   if (
-  //     table.seatingArrangement.filter((ptc) => {
-  //       ptc.bettingHistory.filter(
-  //         (pokerAction) =>
-  //           pokerAction.action == BetActionType.ALL_IN_FORCED_BLIND
-  //       ).length > 0;
-  //     }).length >=
-  //     alivePlayerCount - 1
-  //   ) {
-  //     table.bettingStage = BettingStage.RUNOUT;
-  //     // TODO later
-  //     console.log("runout the table function here (placeholder)");
-  //     return;
-  //   }
-  //   // if preflop stage then make it flop stage and deal flop and set new option
-  //   // if flop stage then make it turn stage and deal turn and set new option
-  //   // if turn stage then make it river stage and deal river and set new option
-  //   // if river stage then make it showdown stage and set new option
-  //   if (table.bettingStage == BettingStage.PREFLOP) {
-  //     table.bettingStage = BettingStage.FLOP;
-  //     // TODO later
-  //     console.log("dealUniqueFlop(table)");
-  //     table.option =
-  //       alivePlayerCount < 3 ? getOptionST(table) : getOptionAtOrAfterSB(table);
-  //   } else if (table.bettingStage == BettingStage.FLOP) {
-  //     table.bettingStage = BettingStage.TURN;
-  //     // TODO later
-  //     console.log("dealUniqueTurn(table)");
-  //     table.option =
-  //       alivePlayerCount < 3 ? getOptionST(table) : getOptionAtOrAfterSB(table);
-  //   } else if (table.bettingStage == BettingStage.TURN) {
-  //     table.bettingStage = BettingStage.RIVER;
-  //     // TODO later
-  //     console.log("dealUniqueRiver(table)");
-  //     table.option =
-  //       alivePlayerCount < 3 ? getOptionST(table) : getOptionAtOrAfterSB(table);
-  //   } else if (table.bettingStage == BettingStage.RIVER) {
-  //     table.bettingStage = BettingStage.SHOWDOWN;
-  //     table.option = table.bettingLead;
-  //   }
-  // } else {
-  //   table.option =
-  //     table.seatingArrangement[
-  //       findNthPosAfterAliveIndex(
-  //         table.seatingArrangement.findIndex(
-  //           (ptc) => ptc.playerID == table.option
-  //         ),
-  //         table.seatingArrangement,
-  //         1
-  //       )
-  //     ].playerID;
-  // }
+  if (
+    table.bettingStage == BettingStage.SHOWDOWN ||
+    table.bettingStage == BettingStage.RUNOUT
+  ) {
+    throw new Error(
+      "IAE: Action cannot be advanced for these, these are handled on their own"
+    );
+  }
+
+  if (isBettingActionDone(table)) {
+    if (table.pot.size == 1) {
+      table.seatingArrangement.find((ptc) => ptc == table.pot.keys[0]).stack +=
+        table.potSize;
+      initHandVars(table);
+      return;
+    }
+    if (
+      table.seatingArrangement.filter((ptc) => ptc.stack == 0).length + 1 ==
+      table.seatingArrangement.length
+    ) {
+      table.bettingStage = BettingStage.RUNOUT;
+      // TODO later, must reset certain vars but not all in initHandVars
+      console.log("runout()");
+      return;
+    }
+    if (table.bettingStage == BettingStage.PREFLOP) {
+      table.bettingStage = BettingStage.FLOP;
+      // TODO later
+      console.log("dealUniqueFlop()");
+      setOptionForNextPhase(table, nextPlayerIDWithBettingAction);
+    } else if (table.bettingStage == BettingStage.FLOP) {
+      table.bettingStage = BettingStage.TURN;
+      // TODO later
+      console.log("dealUniqueTurn()");
+      setOptionForNextPhase(table, nextPlayerIDWithBettingAction);
+    } else if (table.bettingStage == BettingStage.TURN) {
+      table.bettingStage = BettingStage.RIVER;
+      // TODO later
+      console.log("dealUniqueRiver()");
+      setOptionForNextPhase(table, nextPlayerIDWithBettingAction);
+    } else if (table.bettingStage == BettingStage.RIVER) {
+      table.bettingStage = BettingStage.SHOWDOWN;
+      table.option = table.bettingLead;
+    }
+  } else {
+    table.option = nextPlayerIDWithBettingAction(table, table.option);
+  }
 }
 
-// export function getOptionST(table: Table): number {
-//   const st = table.seatingArrangement.find((ptc) =>
-//     ptc.bettingHistory.find((bet) => bet.action == BetActionType.ST)
-//   );
-//   if (st) {
-//     return st.playerID;
-//   } else {
-//     throw new Error("Data corrupted somewhere: straddle not found");
-//   }
-// }
+function nextPlayerIDWithBettingAction(
+  table: Table,
+  startPlayerID: number
+): number {
+  const currOption = startPlayerID;
+  const currOptionPtc = table.seatingArrangement.find(
+    (ptc) => ptc.playerID == currOption
+  );
+  const currOptionIndex = table.seatingArrangement.indexOf(currOptionPtc);
 
-// export function getOptionAtOrAfterSB(table: Table): number {
-//   const sb = table.seatingArrangement.find((ptc) =>
-//     ptc.bettingHistory.find((bet) => bet.action == BetActionType.SB)
-//   );
-
-//   if (sb) {
-//     let count = 0;
-//     let index = table.seatingArrangement.indexOf(sb);
-//     while (count < table.seatingArrangement.length) {
-//       if (
-//         !table.seatingArrangement[index].bettingHistory.find(
-//           (bet) =>
-//             bet.action == BetActionType.FOLD ||
-//             bet.action == BetActionType.ALL_IN_BET ||
-//             bet.action == BetActionType.ALL_IN_CALL ||
-//             bet.action == BetActionType.ALL_IN_FORCED_BLIND ||
-//             bet.action == BetActionType.ALL_IN_RAISE
-//         )
-//       ) {
-//         return table.seatingArrangement[index].playerID;
-//       }
-
-//       count++;
-//       if (index == table.seatingArrangement.length - 1) {
-//         index = 0;
-//       } else {
-//         index++;
-//       }
-//     }
-//     throw new Error(
-//       "Data corrupted somewhere: loop should have found a person at or after the small blind"
-//     );
-//   } else {
-//     throw new Error("Data corrupted somewhere: small blind not found");
-//   }
-// }
+  let count = 0;
+  let index =
+    currOptionIndex + 1 == table.seatingArrangement.length
+      ? 0
+      : currOptionIndex + 1;
+  while (count < table.seatingArrangement.length) {
+    const ptc = table.seatingArrangement[index];
+    if (ptc.stack > 0) {
+      if (table.bettingLog.get(ptc.playerID)) {
+        if (
+          table.bettingLog
+            .get(ptc.playerID)
+            .filter(
+              (ptc) =>
+                ptc.action == BetActionType.ALL_IN_BET ||
+                ptc.action == BetActionType.ALL_IN_CALL ||
+                ptc.action == BetActionType.ALL_IN_FORCED_BLIND ||
+                ptc.action == BetActionType.ALL_IN_RAISE ||
+                ptc.action == BetActionType.FOLD
+            ).length == 0
+        ) {
+          return ptc.playerID;
+        }
+      } else {
+        return ptc.playerID;
+      }
+    }
+    count++;
+    if (index == table.seatingArrangement.length - 1) {
+      index = 0;
+    } else {
+      index++;
+    }
+  }
+  throw new Error(
+    "Data corrupted somewhere: did not find another player with betting action to do"
+  );
+}
+function setOptionForNextPhase(
+  table: Table,
+  nextPlayerIDWithBettingAction: (table: Table, startPlayerID: number) => number
+) {
+  const smallBlindPID = table.seatingArrangement.filter(
+    (ptc) =>
+      table.bettingLog
+        .get(ptc.playerID)
+        .filter((pokerAction) => pokerAction.action == BetActionType.SB)
+        .length > 0
+  )[0].playerID;
+  if (!smallBlindPID) {
+    throw new Error("Data corrupted somewhere: could not find small blind");
+  }
+  table.option = nextPlayerIDWithBettingAction(table, smallBlindPID);
+}
