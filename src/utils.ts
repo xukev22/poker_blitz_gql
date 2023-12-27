@@ -165,7 +165,8 @@ export function initHandVars(table: Table): void {
   table.hand++;
   table.handInProgress = true;
   table.bettingStage = BettingStage.PREFLOP;
-  table.pot = new Map<number, PokerAction[]>();
+  table.pot = new Map<number, PokerAction>();
+  table.bettingLog = new Map<number, PokerAction[]>();
 
   // defensive
 
@@ -244,7 +245,12 @@ export function initHandVars(table: Table): void {
     // force BB bet
     // TODO later extract common pattern to helper in utils,
     if (ptcBB.stack <= table.currentBB) {
-      table.pot.set(ptcBB.playerID, [
+      table.pot.set(ptcBB.playerID, {
+        action: BetActionType.ALL_IN_FORCED_BLIND,
+        stage: BettingStage.PREFLOP,
+        amount: ptcBB.stack,
+      });
+      table.bettingLog.set(ptcBB.playerID, [
         {
           action: BetActionType.ALL_IN_FORCED_BLIND,
           stage: BettingStage.PREFLOP,
@@ -253,7 +259,12 @@ export function initHandVars(table: Table): void {
       ]);
       ptcBB.stack = 0;
     } else {
-      table.pot.set(ptcBB.playerID, [
+      table.pot.set(ptcBB.playerID, {
+        action: BetActionType.BB,
+        stage: BettingStage.PREFLOP,
+        amount: table.currentBB,
+      });
+      table.bettingLog.set(ptcBB.playerID, [
         {
           action: BetActionType.BB,
           stage: BettingStage.PREFLOP,
@@ -264,7 +275,12 @@ export function initHandVars(table: Table): void {
     }
     // force ST bet
     if (ptcST.stack <= table.currentST) {
-      table.pot.set(ptcST.playerID, [
+      table.pot.set(ptcST.playerID, {
+        action: BetActionType.ALL_IN_FORCED_BLIND,
+        stage: BettingStage.PREFLOP,
+        amount: ptcST.stack,
+      });
+      table.bettingLog.set(ptcST.playerID, [
         {
           action: BetActionType.ALL_IN_FORCED_BLIND,
           stage: BettingStage.PREFLOP,
@@ -273,7 +289,12 @@ export function initHandVars(table: Table): void {
       ]);
       ptcST.stack = 0;
     } else {
-      table.pot.set(ptcST.playerID, [
+      table.pot.set(ptcST.playerID, {
+        action: BetActionType.ST,
+        stage: BettingStage.PREFLOP,
+        amount: ptcST.stack,
+      });
+      table.bettingLog.set(ptcST.playerID, [
         {
           action: BetActionType.ST,
           stage: BettingStage.PREFLOP,
@@ -295,7 +316,12 @@ export function initHandVars(table: Table): void {
       ];
     // force SB bet
     if (ptcSB.stack <= table.currentSB) {
-      table.pot.set(ptcSB.playerID, [
+      table.pot.set(ptcSB.playerID, {
+        action: BetActionType.ALL_IN_FORCED_BLIND,
+        stage: BettingStage.PREFLOP,
+        amount: ptcSB.stack,
+      });
+      table.bettingLog.set(ptcSB.playerID, [
         {
           action: BetActionType.ALL_IN_FORCED_BLIND,
           stage: BettingStage.PREFLOP,
@@ -304,7 +330,12 @@ export function initHandVars(table: Table): void {
       ]);
       ptcSB.stack = 0;
     } else {
-      table.pot.set(ptcSB.playerID, [
+      table.pot.set(ptcSB.playerID, {
+        action: BetActionType.SB,
+        stage: BettingStage.PREFLOP,
+        amount: ptcSB.stack,
+      });
+      table.bettingLog.set(ptcSB.playerID, [
         {
           action: BetActionType.SB,
           stage: BettingStage.PREFLOP,
@@ -315,7 +346,12 @@ export function initHandVars(table: Table): void {
     }
     // force BB bet
     if (ptcBB.stack <= table.currentBB) {
-      table.pot.set(ptcBB.playerID, [
+      table.pot.set(ptcBB.playerID, {
+        action: BetActionType.ALL_IN_FORCED_BLIND,
+        stage: BettingStage.PREFLOP,
+        amount: ptcBB.stack,
+      });
+      table.bettingLog.set(ptcBB.playerID, [
         {
           action: BetActionType.ALL_IN_FORCED_BLIND,
           stage: BettingStage.PREFLOP,
@@ -324,7 +360,12 @@ export function initHandVars(table: Table): void {
       ]);
       ptcBB.stack = 0;
     } else {
-      table.pot.set(ptcBB.playerID, [
+      table.pot.set(ptcBB.playerID, {
+        action: BetActionType.BB,
+        stage: BettingStage.PREFLOP,
+        amount: table.currentBB,
+      });
+      table.bettingLog.set(ptcBB.playerID, [
         {
           action: BetActionType.BB,
           stage: BettingStage.PREFLOP,
@@ -335,7 +376,12 @@ export function initHandVars(table: Table): void {
     }
     // force ST bet
     if (ptcST.stack <= table.currentST) {
-      table.pot.set(ptcST.playerID, [
+      table.pot.set(ptcST.playerID, {
+        action: BetActionType.ALL_IN_FORCED_BLIND,
+        stage: BettingStage.PREFLOP,
+        amount: ptcST.stack,
+      });
+      table.bettingLog.set(ptcST.playerID, [
         {
           action: BetActionType.ALL_IN_FORCED_BLIND,
           stage: BettingStage.PREFLOP,
@@ -344,7 +390,12 @@ export function initHandVars(table: Table): void {
       ]);
       ptcST.stack = 0;
     } else {
-      table.pot.set(ptcST.playerID, [
+      table.pot.set(ptcST.playerID, {
+        action: BetActionType.ST,
+        stage: BettingStage.PREFLOP,
+        amount: ptcST.stack,
+      });
+      table.bettingLog.set(ptcST.playerID, [
         {
           action: BetActionType.ST,
           stage: BettingStage.PREFLOP,
@@ -391,6 +442,7 @@ export function initTableVars(table: Table): void {
   table.hand = 0;
   delete table.option;
   delete table.pot;
+  delete table.bettingLog;
 
   delete table.flop;
   delete table.turn;
@@ -467,6 +519,7 @@ export function canCheck(playerID: number, table: Table): boolean {
   // return maxBetSeen <= myPrevBet;
 }
 
+// TODO now
 export function canCall(playerID: number, table: Table): boolean {}
 
 // TODO now this is wrong

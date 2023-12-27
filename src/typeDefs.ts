@@ -19,7 +19,8 @@ const typeDefs = `#graphql
     currentST: Int!
     tableInProgress: Boolean!
     handInProgress: Boolean!
-    pot: [PotEntry!]
+    pot: [PotEntryMostRecent!]
+    bettingLog: [PotEntryAll!]
     hand: Int
     option: Player
     bettingLead: Player
@@ -30,7 +31,12 @@ const typeDefs = `#graphql
     elos: [Int!]!
   }
 
-  type PotEntry {
+  type PotEntryMostRecent {
+    key: Int!
+    value: PokerAction!
+  }
+
+  type PotEntryAll {
     key: Int!
     value: [PokerAction!]!
   }

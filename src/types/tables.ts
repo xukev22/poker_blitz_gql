@@ -39,7 +39,8 @@ export default interface Table {
   tableInProgress: boolean;
   handInProgress: boolean;
   bettingStage?: BettingStage;
-  pot?: Map<number, PokerAction[]>;
+  pot?: Map<number, PokerAction>;
+  bettingLog?: Map<number, PokerAction[]>;
   hand?: number;
   option?: number;
   bettingLead?: number;

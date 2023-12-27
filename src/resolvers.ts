@@ -317,10 +317,16 @@ const resolvers = {
       notRunoutOrShowdownForCallCheckOrFold(table);
 
       // fold
-      table.pot.get(playerID).push({
+      table.bettingLog.get(playerID).push({
         action: BetActionType.FOLD,
         stage: table.bettingStage,
       });
+      const res = table.pot.delete(playerID);
+      if (!res) {
+        throw new Error(
+          "Data corrupted somewhere, could not fold player out of the pot"
+        );
+      }
 
       advanceAction(table, playerID);
 
@@ -335,10 +341,13 @@ const resolvers = {
       notRunoutOrShowdownForCallCheckOrFold(table);
 
       if (canCheck(playerID, table)) {
-        table.pot.get(playerID).push({
+        table.bettingLog.get(playerID).push({
           action: BetActionType.CHECK,
           stage: table.bettingStage,
         });
+        const playerPot = table.pot.get(playerID);
+        playerPot.action = BetActionType.CHECK;
+        playerPot.stage = table.bettingStage;
       } else {
         throw new Error("You cannot check in this situation");
       }
@@ -356,30 +365,32 @@ const resolvers = {
       notRunoutOrShowdownForCallCheckOrFold(table);
 
       if (canCall(playerID, table)) {
-        const bettingLeadPlayer = table.seatingArrangement.find(
-          (ptc) => ptc.playerID == table.bettingLead
-        );
-        const bettingLeadAmount = table.pot.get(bettingLeadPlayer.playerID)[
-          table.pot.get(bettingLeadPlayer.playerID).length - 1
-        ].amount;
+        const bettingLeadAmount = table.pot.get(table.bettingLead).amount;
         const playerAtTable = table.seatingArrangement.find(
           (ptc) => ptc.playerID == playerID
         );
-
         if (bettingLeadAmount < playerAtTable.stack) {
           playerAtTable.stack -= bettingLeadAmount;
-          table.pot.get(playerID).push({
+          table.bettingLog.get(playerID).push({
             action: BetActionType.CALL,
             stage: table.bettingStage,
             amount: bettingLeadAmount,
           });
+          const playerPot = table.pot.get(playerID);
+          playerPot.action = BetActionType.CALL;
+          playerPot.amount = bettingLeadAmount;
+          playerPot.stage = table.bettingStage;
         } else {
-          playerAtTable.stack = 0;
-          table.pot.get(playerID).push({
+          table.bettingLog.get(playerID).push({
             action: BetActionType.ALL_IN_CALL,
             stage: table.bettingStage,
             amount: bettingLeadAmount,
           });
+          const playerPot = table.pot.get(playerID);
+          playerPot.action = BetActionType.ALL_IN_CALL;
+          playerPot.amount = playerAtTable.stack;
+          playerPot.stage = table.bettingStage;
+          playerAtTable.stack = 0;
         }
       } else {
         throw new Error("You cannot call in this situation");
@@ -399,6 +410,13 @@ const resolvers = {
     pot: (parent, args, context, info) => {
       const table = db.tables.find((table) => table.id == parent.id);
       return Array.from(table.pot).map(([key, value]) => ({
+        key,
+        value,
+      }));
+    },
+    bettingLog: (parent, args, context, info) => {
+      const table = db.tables.find((table) => table.id == parent.id);
+      return Array.from(table.bettingLog).map(([key, value]) => ({
         key,
         value,
       }));
