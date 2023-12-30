@@ -27,7 +27,7 @@ export function shuffleArray<T>(array: T[]): T[] {
 // Returns the new calculated elo based on the current elo, finish position,
 // and list of all elos (including this player) at the table
 // finishPosition is from 1 to elos.length inclusive
-// TODO later
+// TODO later maybe with jarnell
 export function calculateNewElo(
   elo: number,
   finishPosition: number,
@@ -434,9 +434,7 @@ export function initHandVars(table: Table): void {
 
   // if everyone or everyone but 1 player is all in preflop due to forced blinds, we can conclude betting action
   if (alivePlayerCount <= 3 && allInBlindCount == alivePlayerCount - 1) {
-    delete table.option;
-    table.bettingStage = BettingStage.RUNOUT;
-    console.log("runout the table function here (placeholder)");
+    makeRunout(table);
   } else {
     // otherwise assign the betting lead
     table.bettingLead =
@@ -501,104 +499,70 @@ export function getPlayerAndTableByPlayerID(playerID: number) {
 }
 
 // Returns whether or not the given player could check, given it is their turn
-// TODO now rewrite this is wrong
 export function canCheck(playerID: number, table: Table): boolean {
-  // const myPtc = seatingArrangement.find((ptc) => ptc.playerID == playerID);
-  // let myPrevBet = 0;
-  // if (myPtc.bettingHistory.length > 0) {
-  //   const prevPokerAction =
-  //     myPtc.bettingHistory[myPtc.bettingHistory.length - 1];
-  //   if (prevPokerAction.amount) {
-  //     myPrevBet = prevPokerAction.amount;
-  //   }
-  // }
-  // let maxBetSeen = 0;
-  // for (const ptc of seatingArrangement) {
-  //   if (ptc.playerID == myPtc.playerID) {
-  //     continue;
-  //   }
-  //   let betAmount = 0;
-  //   if (ptc.bettingHistory.length > 0) {
-  //     const prevPokerAction = ptc.bettingHistory[ptc.bettingHistory.length - 1];
-  //     if (prevPokerAction.amount) {
-  //       betAmount = prevPokerAction.amount;
-  //     }
-  //   }
-  //   if (betAmount && betAmount > maxBetSeen) {
-  //     maxBetSeen = betAmount;
-  //   }
-  // }
-  // return maxBetSeen <= myPrevBet;
+  let maxBetSeen = 0;
+  table.pot.forEach((pokerAction) => {
+    if (pokerAction.amount > maxBetSeen) {
+      maxBetSeen = pokerAction.amount;
+    }
+  });
+  const playerMaxBet = table.pot.get(playerID).amount;
+  return playerMaxBet >= maxBetSeen;
 }
 
-// TODO now
 export function canCall(playerID: number, table: Table): boolean {
-  // throw if no betting lead
+  return table.bettingLead != undefined || table.bettingLead != null;
 }
 
-// TODO now this is wrong
 export function isBettingActionDone(table: Table): boolean {
-  // const bettingLeadIndex = table.seatingArrangement.indexOf(bettingLeadPlayer);
-  // if (bettingLeadIndex == -1) {
-  //   throw new Error(
-  //     "Data corrupted somewhere: betting lead player was not found in table seating arrangement"
-  //   );
-  // }
-  // const betCount = table.seatingArrangement.find(
-  //   (ptc) => ptc.playerID == table.bettingLead
-  // ).bettingHistory.length;
-  // let foldCount = 0;
-  // for (const ptc of alivePlayers) {
-  //   if (ptc.playerID == bettingLeadID) {
-  //     continue;
-  //   }
-  //   if (
-  //     ptc.bettingHistory.length > 0 &&
-  //     ptc.bettingHistory[ptc.bettingHistory.length - 1].action ==
-  //       BetActionType.FOLD
-  //   ) {
-  //     foldCount++;
-  //   }
-  // }
-  // if (foldCount == alivePlayers.length - 1) {
-  //   return true;
-  // }
-  // for (const ptc of alivePlayers) {
-  //   if (ptc.playerID == bettingLeadID) {
-  //     continue;
-  //   }
-  //   const thisPtc = table.seatingArrangement.find(
-  //     (ptc) => ptc.playerID == bettingLeadID
-  //   );
-  //   if (table.seatingArrangement.indexOf(thisPtc) > bettingLeadIndex) {
-  //     if (thisPtc.bettingHistory.length != betCount) {
-  //       return false;
-  //     }
-  //     if (!thisPtc.bettingHistory[betCount - 1].amount) {
-  //       continue;
-  //     }
-  //     if (
-  //       bettingLeadPlayer.bettingHistory[betCount - 1].amount !=
-  //       thisPtc.bettingHistory[betCount - 1].amount
-  //     ) {
-  //       return false;
-  //     }
-  //   } else {
-  //     if (thisPtc.bettingHistory.length + 1 != betCount) {
-  //       return false;
-  //     }
-  //     if (!thisPtc.bettingHistory[betCount].amount) {
-  //       continue;
-  //     }
-  //     if (
-  //       bettingLeadPlayer.bettingHistory[betCount - 1].amount !=
-  //       thisPtc.bettingHistory[betCount].amount
-  //     ) {
-  //       return false;
-  //     }
-  //   }
-  // }
-  // return true;
+  const alivePlayerCount = table.seatingArrangement.filter(
+    (ptc) => ptc.stack > 0
+  ).length;
+  let allInCount = 0;
+  table.pot.forEach((pokerAction) => {
+    if (
+      pokerAction.action == BetActionType.ALL_IN_BET ||
+      pokerAction.action == BetActionType.ALL_IN_CALL ||
+      pokerAction.action == BetActionType.ALL_IN_FORCED_BLIND ||
+      pokerAction.action == BetActionType.ALL_IN_RAISE
+    ) {
+      allInCount++;
+    }
+  });
+  if (allInCount == alivePlayerCount - 1) {
+    return true;
+  }
+
+  if (table.pot.get)
+    if (table.bettingStage != BettingStage.PREFLOP) {
+      // if we are not preflop
+      if (table.pot.size < 2) {
+        return true;
+      }
+    } else {
+      // if we are preflop
+      for (const ptc of table.seatingArrangement) {
+        if (
+          !(
+            table.bettingLog.get(ptc.playerID) &&
+            table.bettingLog.get(ptc.playerID).length > 0
+          )
+        ) {
+          return false;
+        }
+      }
+    }
+  let amount = -1;
+  table.pot.forEach((pokerAction) => {
+    if (amount == -1) {
+      amount = pokerAction.amount;
+    } else {
+      if (amount != pokerAction.amount) {
+        return false;
+      }
+    }
+  });
+  return true;
 }
 
 export function verifyActionOnPlayer(table: Table, playerID: number): void {
@@ -647,25 +611,21 @@ export function advanceAction(table: Table, playerID: number): void {
       table.seatingArrangement.filter((ptc) => ptc.stack == 0).length + 1 ==
       table.seatingArrangement.length
     ) {
-      table.bettingStage = BettingStage.RUNOUT;
-      // TODO later, must reset certain vars but not all in initHandVars
-      console.log("runout()");
+      makeRunout(table);
       return;
     }
     if (table.bettingStage == BettingStage.PREFLOP) {
       table.bettingStage = BettingStage.FLOP;
-      // TODO later
-      console.log("dealUniqueFlop()");
+      dealUniqueFlop(table);
+      // NOTE works for heads up assuming all players are kicked at end of hand
       setOptionForNextPhase(table, nextPlayerIDWithBettingAction);
     } else if (table.bettingStage == BettingStage.FLOP) {
       table.bettingStage = BettingStage.TURN;
-      // TODO later
-      console.log("dealUniqueTurn()");
+      dealUniqueTurn(table);
       setOptionForNextPhase(table, nextPlayerIDWithBettingAction);
     } else if (table.bettingStage == BettingStage.TURN) {
       table.bettingStage = BettingStage.RIVER;
-      // TODO later
-      console.log("dealUniqueRiver()");
+      dealUniqueRiver(table);
       setOptionForNextPhase(table, nextPlayerIDWithBettingAction);
     } else if (table.bettingStage == BettingStage.RIVER) {
       table.bettingStage = BettingStage.SHOWDOWN;
@@ -728,15 +688,155 @@ function setOptionForNextPhase(
   table: Table,
   nextPlayerIDWithBettingAction: (table: Table, startPlayerID: number) => number
 ) {
-  const smallBlindPID = table.seatingArrangement.filter(
-    (ptc) =>
-      table.bettingLog
-        .get(ptc.playerID)
-        .filter((pokerAction) => pokerAction.action == BetActionType.SB)
-        .length > 0
-  )[0].playerID;
-  if (!smallBlindPID) {
-    throw new Error("Data corrupted somewhere: could not find small blind");
+  const alivePlayerCount = table.seatingArrangement.filter(
+    (ptc) => ptc.stack > 0
+  ).length;
+  if (alivePlayerCount > 2) {
+    const smallBlindPID = table.seatingArrangement.filter(
+      (ptc) =>
+        table.bettingLog
+          .get(ptc.playerID)
+          .filter((pokerAction) => pokerAction.action == BetActionType.SB)
+          .length > 0
+    )[0].playerID;
+    if (!smallBlindPID) {
+      throw new Error("Data corrupted somewhere: could not find small blind");
+    }
+    table.option = nextPlayerIDWithBettingAction(table, smallBlindPID);
+  } else {
+    const stPID = table.seatingArrangement.filter(
+      (ptc) =>
+        table.bettingLog
+          .get(ptc.playerID)
+          .filter((pokerAction) => pokerAction.action == BetActionType.ST)
+          .length > 0
+    )[0].playerID;
+    if (!stPID) {
+      throw new Error("Data corrupted somewhere: could not find small blind");
+    }
+    table.option = stPID;
   }
-  table.option = nextPlayerIDWithBettingAction(table, smallBlindPID);
+}
+
+export function dealUniqueFlop(table: Table): void {
+  const usedHoleCards: Card[] = table.seatingArrangement.reduce(
+    (accumulator, currentPlayer) => accumulator.concat(currentPlayer.holeCards),
+    []
+  );
+
+  const fullDeck: Card[] = generateDeck();
+
+  const unusedDeck: Card[] = fullDeck.filter(
+    (card) =>
+      !usedHoleCards.some(
+        (usedCard) => usedCard.suit == card.suit && usedCard.value == card.value
+      )
+  );
+
+  const shuffledDeck: Card[] = shuffleArray(unusedDeck);
+
+  const flop: Card[] = shuffledDeck.slice(0, 3);
+
+  table.flop = flop;
+}
+
+export function dealUniqueTurn(table: Table): void {
+  // Step 1: Get used hole cards and flop cards
+  const usedHoleAndFlopCards: Card[] = table.seatingArrangement
+    .reduce(
+      (accumulator, currentPlayer) =>
+        accumulator.concat(currentPlayer.holeCards),
+      []
+    )
+    .concat(table.flop || []);
+
+  // Step 2: Generate a full deck
+  const fullDeck: Card[] = generateDeck();
+
+  // Step 3: Filter out used hole and flop cards
+  const unusedDeck: Card[] = fullDeck.filter(
+    (card) =>
+      !usedHoleAndFlopCards.some(
+        (usedCard) => usedCard.suit == card.suit && usedCard.value == card.value
+      )
+  );
+
+  // Step 4: Shuffle the remaining deck
+  const shuffledDeck: Card[] = shuffleArray(unusedDeck);
+
+  // Step 5: Deal the turn (next card after shuffling)
+  const turn: Card = shuffledDeck[0];
+
+  // Now, 'turn' contains the unique card for the turn
+  table.turn = turn;
+}
+
+export function dealUniqueRiver(table: Table): void {
+  // Step 1: Get used hole, flop, and turn cards
+  const usedHoleFlopTurnCards: Card[] = table.seatingArrangement
+    .reduce(
+      (accumulator, currentPlayer) =>
+        accumulator.concat(currentPlayer.holeCards),
+      []
+    )
+    .concat(table.flop || [])
+    .concat(table.turn ? [table.turn] : []);
+
+  // Step 2: Generate a full deck
+  const fullDeck: Card[] = generateDeck();
+
+  // Step 3: Filter out used hole, flop, and turn cards
+  const unusedDeck: Card[] = fullDeck.filter(
+    (card) =>
+      !usedHoleFlopTurnCards.some(
+        (usedCard) => usedCard.suit == card.suit && usedCard.value == card.value
+      )
+  );
+
+  // Step 4: Shuffle the remaining deck
+  const shuffledDeck: Card[] = shuffleArray(unusedDeck);
+
+  // Step 5: Deal the river (next card after shuffling)
+  const river: Card = shuffledDeck[0];
+
+  // Now, 'river' contains the unique card for the river
+  table.river = river;
+}
+
+export function makeRunout(table: Table): void {
+  if (
+    table.bettingStage == BettingStage.RUNOUT ||
+    table.bettingStage == BettingStage.SHOWDOWN
+  ) {
+    throw new Error(
+      "Data corrupted somewhere: Called makeRunout on RUNOUT/SHOWDOWN phase"
+    );
+  }
+  // NOTE must reset certain vars but not all in initHandVars
+  delete table.option;
+  const initBetStage = table.bettingStage;
+  table.bettingStage = BettingStage.RUNOUT;
+
+  if (initBetStage == BettingStage.PREFLOP) {
+    dealUniqueFlop(table);
+    dealUniqueTurn(table);
+    dealUniqueRiver(table);
+    determineWinner(table);
+  } else if (initBetStage == BettingStage.FLOP) {
+    dealUniqueTurn(table);
+    dealUniqueRiver(table);
+    determineWinner(table);
+  } else if (initBetStage == BettingStage.TURN) {
+    dealUniqueRiver(table);
+    determineWinner(table);
+  } else if (initBetStage == BettingStage.RIVER) {
+    // NOTE this is just where an all in on river is handled, no actual runout
+    determineWinner(table);
+  }
+}
+
+export function determineWinner(table: Table): void {
+  // TODO later, maybe jarnell helps, determine winners and distribute accordingly, end hand, reset vars, etc.
+  console.log("determine winner placeholder");
+  
 }
