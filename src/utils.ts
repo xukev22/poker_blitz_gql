@@ -506,12 +506,19 @@ export function canCheck(playerID: number, table: Table): boolean {
       maxBetSeen = pokerAction.amount;
     }
   });
-  const playerMaxBet = table.pot.get(playerID).amount;
+  const playerMaxBet =
+    table.pot.get(playerID) && table.pot.get(playerID).amount
+      ? table.pot.get(playerID).amount
+      : -1;
   return playerMaxBet >= maxBetSeen;
 }
 
 export function canCall(playerID: number, table: Table): boolean {
-  return table.bettingLead != undefined || table.bettingLead != null;
+  return (
+    table.bettingLead != undefined ||
+    table.bettingLead != null ||
+    table.bettingLead != playerID
+  );
 }
 
 export function isBettingActionDone(table: Table): boolean {
@@ -838,5 +845,4 @@ export function makeRunout(table: Table): void {
 export function determineWinner(table: Table): void {
   // TODO later, maybe jarnell helps, determine winners and distribute accordingly, end hand, reset vars, etc.
   console.log("determine winner placeholder");
-  
 }
