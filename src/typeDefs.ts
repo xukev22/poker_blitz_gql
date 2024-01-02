@@ -150,11 +150,10 @@ const typeDefs = `#graphql
     startTable(tableID: ID!): Boolean
     forfeitTable(playerID: ID!): Boolean
     startHand(tableID: ID!): Boolean
-    #TODO endhand? endtable?
     fold(playerID: ID!): Boolean
-    check(playerID: ID!): Boolean
-    call(playerID: ID!): Boolean
-    #TODO
+    #TODO later
+    #check(playerID: ID!): Boolean
+    #call(playerID: ID!): Boolean
     #bet(playerID: ID!, betAmount: Number): Boolean
     #raise(playerID: ID!, raiseAmount: Number!): Boolean
     #allIn(playerID: ID!): Boolean
