@@ -11,7 +11,7 @@ class Node<T> {
 }
 
 // A class for creating and representing circular linked list
-class CircularLinkedList<T> {
+export class CircularLinkedList<T> {
   head: Node<T> | null;
 
   // Constructor to initialize the circular linked list as empty
@@ -224,3 +224,5 @@ myList.forEach((data) => {
 
 console.log("After forEach:");
 myList.print();
+
+module.exports = CircularLinkedList;
