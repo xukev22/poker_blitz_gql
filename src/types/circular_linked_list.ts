@@ -208,21 +208,3 @@ function shuffleArray<T>(array: T[]): T[] {
   return array;
 }
 
-// Example usage
-const myList = new CircularLinkedList<number>();
-myList.append(1);
-myList.append(2);
-myList.append(3);
-
-console.log("Original list:");
-myList.print();
-
-console.log("Executing forEach:");
-myList.forEach((data) => {
-  console.log(data * 2); // Perform some operation (e.g., multiply each element by 2)
-});
-
-console.log("After forEach:");
-myList.print();
-
-module.exports = CircularLinkedList;

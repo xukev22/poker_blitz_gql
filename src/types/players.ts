@@ -140,7 +140,7 @@ abstract class APlayer implements IPlayer {
 }
 
 // A HumanPlayer implementation
-class HumanPlayer extends APlayer {
+export class HumanPlayer extends APlayer {
   constructor(username: string, elo: number) {
     super(username, elo);
   }
