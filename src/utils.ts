@@ -4,7 +4,6 @@ import {
   CardSuit,
   CardValue,
   IBetAction,
-  IHand,
   IPokerTable,
 } from "./types/tables";
 
@@ -22,6 +21,7 @@ export function calculateNewElo(
     throw new Error("Finish position is invalid");
   }
 
+  // placeholder Elo calculation with a random factor between -50 and 50
   return elo + Math.floor(Math.random() * 100) - 50;
 }
 
@@ -50,6 +50,7 @@ export function calculateNewBlindMultiplier(
   return 1 * Math.pow(blindIncreaseRatio, numTimesBlindsShouldIncrease);
 }
 
+// Get the current betting history based on the table's betting stage
 export function getCurrentBettingHistory(table: IPokerTable): IBetAction[] {
   let bettingHistory: IBetAction[];
   switch (table.bettingStage) {
@@ -69,6 +70,7 @@ export function getCurrentBettingHistory(table: IPokerTable): IBetAction[] {
   return bettingHistory;
 }
 
+// Map CardValue enum to corresponding numeric representation
 export function cardValueToNumberRep(cardValue: CardValue): number {
   switch (cardValue) {
     case CardValue.ACE:
@@ -100,6 +102,7 @@ export function cardValueToNumberRep(cardValue: CardValue): number {
   }
 }
 
+// Map numeric representation to corresponding CardValue enum
 export function numberRepToCardValue(value: number): CardValue {
   switch (value) {
     case 14:
@@ -131,6 +134,8 @@ export function numberRepToCardValue(value: number): CardValue {
   }
 }
 
+// Compare two arrays of CardValue enums based on their numeric representations,
+// tiebreakers are broken in the order of the array indices
 export function compareArrays(
   array1: CardValue[],
   array2: CardValue[]

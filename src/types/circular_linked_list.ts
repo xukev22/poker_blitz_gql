@@ -1,26 +1,33 @@
+// A Node that represents a piece of data and the next node
 class Node<T> {
   data: T;
   next: Node<T> | null;
 
+  // Constructor to initialize the node with data
   constructor(data: T) {
     this.data = data;
     this.next = null;
   }
 }
 
+// A class for creating and representing circular linked list
 class CircularLinkedList<T> {
   head: Node<T> | null;
 
+  // Constructor to initialize the circular linked list as empty
   constructor() {
     this.head = null;
   }
 
+  // Append a new node with data to the circular linked list
   append(data: T): void {
     const newNode = new Node(data);
     if (!this.head) {
+      // If the list is empty, set the new node as the head and make it circular
       this.head = newNode;
       newNode.next = this.head;
     } else {
+      // If the list is not empty, find the last node and connect the new node
       let current = this.head;
       while (current.next !== this.head) {
         current = current.next!;
@@ -30,15 +37,17 @@ class CircularLinkedList<T> {
     }
   }
 
-  remove(player: T): void {
+  // Remove a node with specified data from the circular linked list
+  remove(data: T): void {
     if (!this.head) {
       throw new Error("Circular list is empty");
     }
 
     // Special case for the head
-    if (this.head.data === player) {
+    if (this.head.data === data) {
       if (this.head.next === this.head) {
-        this.head = null; // Removing the only node
+        // Removing the only node
+        this.head = null;
       } else {
         let current = this.head;
         while (current.next !== this.head) {
@@ -56,13 +65,14 @@ class CircularLinkedList<T> {
     do {
       prev = current;
       current = current.next!;
-    } while (current !== this.head && current.data !== player);
+    } while (current !== this.head && current.data !== data);
 
     if (current !== this.head) {
       prev!.next = current.next;
     }
   }
 
+  // shuffle the elements of the circular linked list
   shuffle(): void {
     if (!this.head) {
       throw new Error("Circular list is empty");
@@ -87,11 +97,13 @@ class CircularLinkedList<T> {
     this.head = shuffledNodes[0];
   }
 
+  // clone the circular linked list
   clone(): CircularLinkedList<T> {
     const clonedList = new CircularLinkedList<T>();
 
     if (!this.head) {
-      return clonedList; // Return an empty list if the original list is empty
+      // Return an empty list if the original list is empty
+      return clonedList;
     }
 
     let originalCurrent = this.head;
@@ -103,6 +115,7 @@ class CircularLinkedList<T> {
     return clonedList;
   }
 
+  // Find a node with specified data in the circular linked list
   find(player: T): Node<T> | null {
     if (!this.head) {
       throw new Error("Circular list is empty");
@@ -119,6 +132,7 @@ class CircularLinkedList<T> {
     throw new Error("Could not find a node");
   }
 
+  // Get the nth element in the circular linked list, 0 returns the first
   getNthElement(n: number): Node<T> | null {
     if (!this.head || n < 0) {
       throw new Error("Circular list is empty or invalid n");
@@ -141,6 +155,7 @@ class CircularLinkedList<T> {
     return current;
   }
 
+  // Get the length of the circular linked list
   length(): number {
     if (!this.head) {
       return 0;
@@ -156,6 +171,7 @@ class CircularLinkedList<T> {
     return count;
   }
 
+  // Apply a callback function to each element in the circular linked list
   forEach(callback: (data: T) => void): void {
     if (!this.head) {
       return;
@@ -168,6 +184,7 @@ class CircularLinkedList<T> {
     } while (current !== this.head);
   }
 
+  // Print the elements of the circular linked list
   print(): void {
     if (!this.head) {
       console.log("List is empty");
@@ -182,6 +199,7 @@ class CircularLinkedList<T> {
   }
 }
 
+// Function to shuffle an array using the Fisher-Yates algorithm
 function shuffleArray<T>(array: T[]): T[] {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));

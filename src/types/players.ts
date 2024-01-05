@@ -18,6 +18,7 @@ export interface IPlayer {
   fold(): void;
 }
 
+// An abstract class for common behavior between different types of players
 abstract class APlayer implements IPlayer {
   username: string;
   elo: number;
@@ -25,11 +26,13 @@ abstract class APlayer implements IPlayer {
   holeCards?: Card[];
   stack?: number;
 
+  // create a player with a starting elo and username
   constructor(username: string, elo: number) {
     this.username = username;
     this.elo = elo;
   }
 
+  // Attempt to join a poker table
   joinTable(table: IPokerTable): void {
     if (table.tableInProgress) {
       throw new Error("Can not join table since table is in progress");
@@ -50,6 +53,7 @@ abstract class APlayer implements IPlayer {
     table.startingElos.push(this.elo);
   }
 
+  // Attempt to leave the table queue
   leaveTableQueue(): void {
     if (!this.table) {
       throw new Error("Player is not at a table queue to leave");
@@ -68,6 +72,7 @@ abstract class APlayer implements IPlayer {
     delete this.table;
   }
 
+  // Attempt to exit the table (forfeit or leave)
   exitTable(): void {
     if (!this.table) {
       throw new Error("Player is not at a table to exit");
@@ -97,6 +102,7 @@ abstract class APlayer implements IPlayer {
     this.table.aliveSeatingArrangement.remove(this);
     delete this.table;
   }
+  // Fold during a poker hand
   fold(): void {
     if (!this.table) {
       throw new Error("Player is not at a table to fold");
@@ -110,7 +116,6 @@ abstract class APlayer implements IPlayer {
     if (this.table.option !== this) {
       throw new Error("It is not this player's turn");
     }
-    // can fold?
     const bettingHistory = getCurrentBettingHistory(this.table);
     if (!(bettingHistory[bettingHistory.length - 1] instanceof Check)) {
       bettingHistory.push(new Fold(this));
@@ -134,12 +139,14 @@ abstract class APlayer implements IPlayer {
   }
 }
 
+// A HumanPlayer implementation
 class HumanPlayer extends APlayer {
   constructor(username: string, elo: number) {
     super(username, elo);
   }
 }
 
+// An AIPlayer implementation
 class AIPlayer extends APlayer {
   playstyle: AIPlaystyleType;
 

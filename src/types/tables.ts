@@ -9,7 +9,9 @@ import {
 } from "../utils";
 import { IPlayer } from "./players";
 
+// An interface for a PokerTable
 export interface IPokerTable {
+  // these readonly fields will never need to change, unless updateTable calls it not during an ongoing game
   readonly name: string;
   readonly startingStack: number;
   readonly startingSB: number;
@@ -39,18 +41,10 @@ export interface IPokerTable {
   startTable(): void;
   startHand(): void;
   isBettingActionDone(): boolean;
-  dealUniqueFlop(): void;
-  dealUniqueTurn(): void;
-  dealUniqueRiver(): void;
-  resetHandVars(): void;
-  resetTableVars(): void;
   advanceBettingAction(): void;
-  calculateTotalPot(): number;
-  endHand(): void;
-  determineWinnersAndHowMuch(): { player: IPlayer; chips: number }[];
-  calculateBestPlayerHand(holeCards: Card[]): IHand;
 }
 
+// Common methods and fields for implementations of a poker table
 abstract class APokerTable implements IPokerTable {
   readonly name: string;
   readonly startingStack: number;
@@ -79,6 +73,7 @@ abstract class APokerTable implements IPokerTable {
   riverBettingHistory?: IBetAction[];
   startingElos: number[];
 
+  // common constructor for initializing a table
   constructor(
     name: string,
     startingStack: number,
@@ -104,7 +99,7 @@ abstract class APokerTable implements IPokerTable {
     this.startingElos = [];
     this.aliveSeatingArrangement = new CircularLinkedList<IPlayer>();
   }
-
+  // starts the table, resetting/initializing all relevant fields defensively
   startTable(): void {
     if (this.tableInProgress) {
       throw new Error("Table already has game in progress");
@@ -119,6 +114,7 @@ abstract class APokerTable implements IPokerTable {
     // defensively delete
     this.resetTableVars();
   }
+  // starts a new hand, resetting/initialize all relevant fields defensively
   startHand(): void {
     if (!this.tableInProgress) {
       throw new Error("Cannot start hand since table has not started yet");
@@ -146,23 +142,13 @@ abstract class APokerTable implements IPokerTable {
     this.currentBB = Math.round(this.startingBB * blindMultiplier);
     this.currentST = Math.round(this.startingST * blindMultiplier);
 
-    const deck: Card[] = shuffleArray(generateDeck());
-    this.aliveSeatingArrangement.forEach((player) => {
-      if (player.stack > 0) {
-        const holeCards: Card[] = [];
-        holeCards.push(deck.pop());
-        player.holeCards = holeCards;
-      }
-    });
+    this.dealUniqueHoleCards();
     if (this.aliveSeatingArrangement.head == null) {
       throw new Error("Data corruption: null head");
     }
-    let alivePlayerCount = 0;
-    this.aliveSeatingArrangement.forEach((player) => {
-      if (player.stack > 0) {
-        alivePlayerCount++;
-      }
-    });
+    // NOTE assumes the list is properly pruned after a hand is over
+    // get the amount of players left
+    const alivePlayerCount = this.aliveSeatingArrangement.length();
     if (alivePlayerCount < 2 || alivePlayerCount > 10) {
       throw new Error(
         "Data corruption: alive players should be between 2 and 10 inclusive"
@@ -176,6 +162,7 @@ abstract class APokerTable implements IPokerTable {
     const smallBlindPlayer = smallBlindNode.data;
 
     // set option and blind bets
+    // case: heads up
     if (alivePlayerCount == 2) {
       const bigBlind = new Blind();
       const bigBlindPlayer = smallBlindNode.next.data;
@@ -209,6 +196,7 @@ abstract class APokerTable implements IPokerTable {
 
       this.option = bigBlindPlayer;
     } else {
+      // case not heads up
       const smallBlind = new Blind();
       if (smallBlindPlayer.stack <= this.currentSB) {
         smallBlind.allIn = true;
@@ -254,8 +242,10 @@ abstract class APokerTable implements IPokerTable {
       this.preFlopBettingHistory.push(stBlind);
 
       if (alivePlayerCount > 3) {
+        // case we have more than 3 players
         this.option = smallBlindNode.next.next.next.data;
       } else {
+        // case: exactly 3
         this.option = smallBlindPlayer;
       }
     }
@@ -267,21 +257,23 @@ abstract class APokerTable implements IPokerTable {
         allIns++;
       }
     });
-
     if (
       (allIns >= 2 && alivePlayerCount == 3) ||
       (allIns >= 1 && alivePlayerCount == 2)
     ) {
+      // runout
       this.dealUniqueFlop();
       this.dealUniqueTurn();
       this.dealUniqueRiver();
       this.endHand();
     }
   }
+  // NOTE does not handle all in below 2x raise, action should be halted but it allows reraises
+  // checks if betting action is done, likely implying advanceBettingAction() will be called
   isBettingActionDone(): boolean {
-    const bettingHistory: IBetAction[] = getCurrentBettingHistory(this);
     // betting action is done once the betting lead has been matched and the rest players have folded or are allin
     // or it checks around
+    const bettingHistory: IBetAction[] = getCurrentBettingHistory(this);
 
     let tempState: {
       bettingLead: IBetAction;
@@ -295,11 +287,13 @@ abstract class APokerTable implements IPokerTable {
       consecutiveChecks: 0,
     };
 
+    // LIKELY debug
     for (const betAction of bettingHistory) {
       // update state
 
       // case: check
       // case: fold
+      // case: call
       // case: raise/bet not all in
       // case: allin raise
       // case: allin not raise
@@ -307,6 +301,9 @@ abstract class APokerTable implements IPokerTable {
         tempState.consecutiveChecks++;
       } else if (betAction instanceof Fold) {
         tempState.playersThatCanAct--;
+        tempState.playersThatMatchOrFoldBettingLead++;
+        tempState.consecutiveChecks = 0;
+      } else if (betAction instanceof Call) {
         tempState.playersThatMatchOrFoldBettingLead++;
         tempState.consecutiveChecks = 0;
       } else if (
@@ -335,124 +332,21 @@ abstract class APokerTable implements IPokerTable {
       } else {
         throw new Error("How did I get here, BAD BAD BAD");
       }
-
-      // if state implies betting is done, return true
-      if (tempState.consecutiveChecks == tempState.playersThatCanAct) {
-        return true;
-      }
-      if (
-        tempState.playersThatCanAct ==
-        tempState.playersThatMatchOrFoldBettingLead
-      ) {
-        return true;
-      }
+    }
+    // if state implies betting is done, return true
+    if (tempState.consecutiveChecks == tempState.playersThatCanAct) {
+      return true;
+    }
+    if (
+      tempState.playersThatCanAct == tempState.playersThatMatchOrFoldBettingLead
+    ) {
+      return true;
     }
     return false;
   }
-  dealUniqueFlop(): void {
-    const fullDeck = generateDeck();
-    let usedHoleCards: Card[] = [];
-    this.aliveSeatingArrangement.forEach((player) => {
-      usedHoleCards.concat(player.holeCards);
-    });
-    const unusedDeck: Card[] = fullDeck.filter(
-      (card) =>
-        !usedHoleCards.some(
-          (usedCard) =>
-            usedCard.suit == card.suit && usedCard.value == card.value
-        )
-    );
-
-    const shuffledDeck: Card[] = shuffleArray(unusedDeck);
-
-    const flop: Card[] = shuffledDeck.slice(0, 3);
-
-    this.flop = flop;
-  }
-  dealUniqueTurn(): void {
-    const fullDeck = generateDeck();
-    let usedHoleCards: Card[] = [];
-    this.aliveSeatingArrangement.forEach((player) => {
-      usedHoleCards.concat(player.holeCards);
-    });
-    usedHoleCards.concat(this.flop || []);
-    const unusedDeck: Card[] = fullDeck.filter(
-      (card) =>
-        !usedHoleCards.some(
-          (usedCard) =>
-            usedCard.suit == card.suit && usedCard.value == card.value
-        )
-    );
-
-    const shuffledDeck: Card[] = shuffleArray(unusedDeck);
-
-    const turn: Card = shuffledDeck[0];
-
-    this.turn = turn;
-  }
-  dealUniqueRiver(): void {
-    const fullDeck = generateDeck();
-    let usedHoleCards: Card[] = [];
-    this.aliveSeatingArrangement.forEach((player) => {
-      usedHoleCards.concat(player.holeCards);
-    });
-    usedHoleCards.concat(this.flop || []);
-    usedHoleCards.concat(this.turn ? [this.turn] : []);
-    const unusedDeck: Card[] = fullDeck.filter(
-      (card) =>
-        !usedHoleCards.some(
-          (usedCard) =>
-            usedCard.suit == card.suit && usedCard.value == card.value
-        )
-    );
-
-    const shuffledDeck: Card[] = shuffleArray(unusedDeck);
-
-    const river: Card = shuffledDeck[0];
-
-    this.river = river;
-  }
-  resetHandVars(): void {
-    delete this.option;
-    delete this.bettingStage;
-    delete this.preFlopBettingHistory;
-    delete this.flopBettingHistory;
-    delete this.turnBettingHistory;
-    delete this.riverBettingHistory;
-    delete this.flop;
-    delete this.turn;
-    delete this.river;
-    this.aliveSeatingArrangement.forEach((player) => {
-      delete player.holeCards;
-    });
-    this.bettingStage = BettingStage.PREFLOP;
-    this.preFlopBettingHistory = [];
-  }
-  resetTableVars(): void {
-    delete this.option;
-    delete this.bettingStage;
-    delete this.preFlopBettingHistory;
-    delete this.flopBettingHistory;
-    delete this.turnBettingHistory;
-    delete this.riverBettingHistory;
-    delete this.flop;
-    delete this.turn;
-    delete this.river;
-
-    this.currentSB = this.startingSB;
-    this.currentBB = this.startingBB;
-    this.currentST = this.startingST;
-
-    this.aliveSeatingArrangement.shuffle();
-    this.aliveSeatingArrangement.forEach((player) => {
-      player.stack = this.startingStack;
-      // defensively delete
-      delete player.holeCards;
-    });
-  }
+  // advance the betting action based on the current game state
   advanceBettingAction(): void {
     let foldCount = 0;
-    // const bettingHistory = getCurrentBettingHistory(this);
     const wholeBettingHistory = this.preFlopBettingHistory
       .concat(this.flopBettingHistory)
       .concat(this.turnBettingHistory)
@@ -463,7 +357,7 @@ abstract class APokerTable implements IPokerTable {
       }
     });
 
-    // if everyone fold then give pot to last person standing
+    // if everyone folds but one person then give pot to last person standing
     if (foldCount == this.aliveSeatingArrangement.length() - 1) {
       const players = this.aliveSeatingArrangement.clone();
       wholeBettingHistory.forEach((betAction) => {
@@ -503,6 +397,7 @@ abstract class APokerTable implements IPokerTable {
       return;
     }
 
+    // find the straddle player
     const blindsPreflop = this.preFlopBettingHistory.filter(
       (betAction) => betAction instanceof Blind
     );
@@ -510,9 +405,11 @@ abstract class APokerTable implements IPokerTable {
     const stNode = this.aliveSeatingArrangement.find(stPlayer);
 
     // set new option
+    // case: heads up
     if (this.aliveSeatingArrangement.length() == 2) {
       this.option = stNode.data;
     } else {
+      // case: not heads up
       let newOption = stNode.next;
       let count = 0;
       while (count < this.aliveSeatingArrangement.length()) {
@@ -535,7 +432,114 @@ abstract class APokerTable implements IPokerTable {
       this.endHand();
     }
   }
-  calculateTotalPot(): number {
+  // deal unique flop (no hole cards)
+  private dealUniqueFlop(): void {
+    const fullDeck = generateDeck();
+    let usedHoleCards: Card[] = [];
+    this.aliveSeatingArrangement.forEach((player) => {
+      usedHoleCards.concat(player.holeCards);
+    });
+    const unusedDeck: Card[] = fullDeck.filter(
+      (card) =>
+        !usedHoleCards.some(
+          (usedCard) =>
+            usedCard.suit == card.suit && usedCard.value == card.value
+        )
+    );
+
+    const shuffledDeck: Card[] = shuffleArray(unusedDeck);
+
+    const flop: Card[] = shuffledDeck.slice(0, 3);
+
+    this.flop = flop;
+  }
+  // deal unique turn (no hole cards, flop)
+  private dealUniqueTurn(): void {
+    const fullDeck = generateDeck();
+    let usedHoleCards: Card[] = [];
+    this.aliveSeatingArrangement.forEach((player) => {
+      usedHoleCards.concat(player.holeCards);
+    });
+    usedHoleCards.concat(this.flop || []);
+    const unusedDeck: Card[] = fullDeck.filter(
+      (card) =>
+        !usedHoleCards.some(
+          (usedCard) =>
+            usedCard.suit == card.suit && usedCard.value == card.value
+        )
+    );
+
+    const shuffledDeck: Card[] = shuffleArray(unusedDeck);
+
+    const turn: Card = shuffledDeck[0];
+
+    this.turn = turn;
+  }
+  // deal unique river (no hole cards, flop, turn)
+  private dealUniqueRiver(): void {
+    const fullDeck = generateDeck();
+    let usedHoleCards: Card[] = [];
+    this.aliveSeatingArrangement.forEach((player) => {
+      usedHoleCards.concat(player.holeCards);
+    });
+    usedHoleCards.concat(this.flop || []);
+    usedHoleCards.concat(this.turn ? [this.turn] : []);
+    const unusedDeck: Card[] = fullDeck.filter(
+      (card) =>
+        !usedHoleCards.some(
+          (usedCard) =>
+            usedCard.suit == card.suit && usedCard.value == card.value
+        )
+    );
+
+    const shuffledDeck: Card[] = shuffleArray(unusedDeck);
+
+    const river: Card = shuffledDeck[0];
+
+    this.river = river;
+  }
+  // helper func to reset hand vars, does not adjust hand num that is handled in startHand()
+  private resetHandVars(): void {
+    delete this.option;
+    delete this.bettingStage;
+    delete this.preFlopBettingHistory;
+    delete this.flopBettingHistory;
+    delete this.turnBettingHistory;
+    delete this.riverBettingHistory;
+    delete this.flop;
+    delete this.turn;
+    delete this.river;
+    this.aliveSeatingArrangement.forEach((player) => {
+      delete player.holeCards;
+    });
+    this.bettingStage = BettingStage.PREFLOP;
+    this.preFlopBettingHistory = [];
+  }
+  // helper func to reset table vars
+  private resetTableVars(): void {
+    delete this.option;
+    delete this.bettingStage;
+    delete this.preFlopBettingHistory;
+    delete this.flopBettingHistory;
+    delete this.turnBettingHistory;
+    delete this.riverBettingHistory;
+    delete this.flop;
+    delete this.turn;
+    delete this.river;
+
+    this.currentSB = this.startingSB;
+    this.currentBB = this.startingBB;
+    this.currentST = this.startingST;
+
+    this.aliveSeatingArrangement.shuffle();
+    this.aliveSeatingArrangement.forEach((player) => {
+      player.stack = this.startingStack;
+      // defensively delete
+      delete player.holeCards;
+    });
+  }
+  // helper func to calcualte everything put into the pot
+  private calculateTotalPot(): number {
     let totalPot = 0;
     this.preFlopBettingHistory.forEach(
       (betAction) => (totalPot += betAction.getAmount())
@@ -551,10 +555,10 @@ abstract class APokerTable implements IPokerTable {
     );
     return totalPot;
   }
-  // determines winner(s), distributes chips accordingly, adjusts elo, resets the table/hand vars
-  // NOTE if everyone folded prior then that was handled in advanceAction
-  // NOTE that double/multi KO position tiebreakers not handled yet (i.e person with bigger stack should finish higher than other person if both KO)
-  endHand(): void {
+  // NOTE if everyone folded prior then that was handled in advanceAction then endHand shouldnt/doesnt need to be called
+  // NOTE that double/multi KO position tiebreakers not handled yet (i.e person with bigger stack at start of hand should finish higher than other person if both KO)
+  private endHand(): void {
+    // determine who won what amounts and give them the chips
     let finishPosition = this.aliveSeatingArrangement.length();
     const winners = this.determineWinnersAndHowMuch();
     for (const winner of winners) {
@@ -562,7 +566,8 @@ abstract class APokerTable implements IPokerTable {
         winner.chips;
     }
 
-    // for each loser if they stack is 0 sort them by starting stack at hand start
+    // for each player after chip distribution if their stack is 0 sort them by starting stack at hand start, not yet implemented
+    // also remove each player with stack at 0
     const newSeatingArrangement = this.aliveSeatingArrangement.clone();
     this.aliveSeatingArrangement.forEach((player) => {
       if (player.stack == 0) {
@@ -575,17 +580,23 @@ abstract class APokerTable implements IPokerTable {
         finishPosition -= 1;
       }
     });
+
+    // assign aliveSeatingArrangement to newly calculated list
     this.aliveSeatingArrangement = newSeatingArrangement;
 
+    // reset/initialize the relevant hand variables
     this.resetHandVars();
     this.handInProgress = false;
 
+    // if only one player remains
     if (this.aliveSeatingArrangement.length() == 1) {
+      // give them the winning elo algo calc
       calculateNewElo(
         this.aliveSeatingArrangement.head.data.elo,
         1,
         this.startingElos
       );
+      // reset the table variables, break out since we are done
       delete this.currentSB;
       delete this.currentBB;
       delete this.currentST;
@@ -605,22 +616,27 @@ abstract class APokerTable implements IPokerTable {
       return;
     }
   }
-  determineWinnersAndHowMuch(): { player: IPlayer; chips: number }[] {
+  // determines the winners of all the pots (main pots, side pots, etc.) and how much chips each should win
+  private determineWinnersAndHowMuch(): { player: IPlayer; chips: number }[] {
+    // get whole betting history
     const wholeBettingHistory = this.preFlopBettingHistory
       .concat(this.flopBettingHistory)
       .concat(this.turnBettingHistory)
       .concat(this.riverBettingHistory);
+    // get all the players at showdown
     const playersAtShowdown = this.aliveSeatingArrangement.clone();
     const playersAtShowdownInvestment: {
       player: IPlayer;
       chipsInvested: number;
       hand: IHand;
     }[] = [];
+    // remove each player that doesnt make it to showdown
     wholeBettingHistory.forEach((betAction) => {
       if (betAction instanceof Fold) {
         playersAtShowdown.remove(betAction.player);
       }
     });
+    // for each player that made it to showdown create a investment object[] (unfilled)
     playersAtShowdown.forEach((player) =>
       playersAtShowdownInvestment.push({
         player: player,
@@ -628,18 +644,19 @@ abstract class APokerTable implements IPokerTable {
         hand: null,
       })
     );
-    playersAtShowdownInvestment.map((pair) => {
+    // fill the investment object[] based on each player's total chips invested, and the hand they have at showdown
+    playersAtShowdownInvestment.map((player) => {
       let chipsInvested = 0;
       wholeBettingHistory.forEach((betAction) => {
-        if (betAction.player === pair.player) {
+        if (betAction.player === player.player) {
           chipsInvested += betAction.getAmount();
         }
       });
       return {
-        player: pair.player,
+        player: player.player,
         chipsInvested: chipsInvested,
-        // NOTE omaha not supported yet, would be overridden in each table class impl
-        hand: this.calculateBestPlayerHand(pair.player.holeCards),
+        // NOTE omaha calculation of best hand not supported yet, would be overridden in each table class impl
+        hand: this.calculateBestPlayerHand(player.player.holeCards),
       };
     });
 
@@ -647,22 +664,86 @@ abstract class APokerTable implements IPokerTable {
     playersAtShowdownInvestment.sort(
       (p1, p2) => p1.chipsInvested - p2.chipsInvested
     );
+    const originalPlayersAtShowdownInvestment = [
+      ...playersAtShowdownInvestment,
+    ];
 
-    // const distinctChipsInvested = new Set<number>();
-    // for (const playerShowdownInfo of playersAtShowdownInvestment) {
-    //   distinctChipsInvested.add(playerShowdownInfo.chipsInvested);
-    // }
-
+    // create a list of winner info
     const returnWinners: { player: IPlayer; chips: number }[] = [];
-    // const returnEliminated: { player: IPlayer }[] = [];
 
-    let currentPot = playersAtShowdownInvestment;
+    // track the total amount of chips in all the pots combined
     let remainingPot = this.calculateTotalPot();
+
+    const totalContributedByEachPlayerPreflop = new Map<IPlayer, number>();
+    this.preFlopBettingHistory.forEach((betAction) => {
+      if (totalContributedByEachPlayerPreflop.get(betAction.player)) {
+        totalContributedByEachPlayerPreflop.set(
+          betAction.player,
+          totalContributedByEachPlayerPreflop.get(betAction.player) +
+            betAction.getAmount()
+        );
+      } else {
+        totalContributedByEachPlayerPreflop.set(
+          betAction.player,
+          betAction.getAmount()
+        );
+      }
+    });
+    const totalContributedByEachPlayerFlop = new Map<IPlayer, number>();
+    this.flopBettingHistory.forEach((betAction) => {
+      if (totalContributedByEachPlayerFlop.get(betAction.player)) {
+        totalContributedByEachPlayerFlop.set(
+          betAction.player,
+          totalContributedByEachPlayerFlop.get(betAction.player) +
+            betAction.getAmount()
+        );
+      } else {
+        totalContributedByEachPlayerFlop.set(
+          betAction.player,
+          betAction.getAmount()
+        );
+      }
+    });
+    const totalContributedByEachPlayerTurn = new Map<IPlayer, number>();
+    this.turnBettingHistory.forEach((betAction) => {
+      if (totalContributedByEachPlayerTurn.get(betAction.player)) {
+        totalContributedByEachPlayerTurn.set(
+          betAction.player,
+          totalContributedByEachPlayerTurn.get(betAction.player) +
+            betAction.getAmount()
+        );
+      } else {
+        totalContributedByEachPlayerTurn.set(
+          betAction.player,
+          betAction.getAmount()
+        );
+      }
+    });
+
+    const totalContributedByEachPlayerRiver = new Map<IPlayer, number>();
+    this.riverBettingHistory.forEach((betAction) => {
+      if (totalContributedByEachPlayerRiver.get(betAction.player)) {
+        totalContributedByEachPlayerRiver.set(
+          betAction.player,
+          totalContributedByEachPlayerRiver.get(betAction.player) +
+            betAction.getAmount()
+        );
+      } else {
+        totalContributedByEachPlayerRiver.set(
+          betAction.player,
+          betAction.getAmount()
+        );
+      }
+    });
+
+    // we will start to chip away at the list of player showdown investments, to calculate main/side pots
     while (playersAtShowdownInvestment.length > 0) {
+      // if there is only one player remaining, they overshoved, we just give back the remaining chips to that player
       if (playersAtShowdownInvestment.length == 1) {
         const targetPlayerWithOverflow = returnWinners.find(
           (winner) => winner.player === playersAtShowdownInvestment[0].player
         );
+        // case: player won a pot before hand
         if (targetPlayerWithOverflow) {
           returnWinners.forEach((winner) => {
             if (winner.player === targetPlayerWithOverflow.player) {
@@ -672,7 +753,8 @@ abstract class APokerTable implements IPokerTable {
               };
             }
           });
-        } else {
+        } // case player did not win any pots before hand
+        else {
           returnWinners.push({
             player: targetPlayerWithOverflow.player,
             chips: Math.floor(remainingPot),
@@ -680,10 +762,10 @@ abstract class APokerTable implements IPokerTable {
         }
       }
 
+      // determine # players at risk, NOTE should be at least one
       let playersAtRisk = 0;
       let smallestChipsInvested = null;
-      // determine # players at risk, NOTE should be at least one
-      currentPot.forEach((player) => {
+      playersAtShowdownInvestment.forEach((player) => {
         if (player.chipsInvested) {
           if (smallestChipsInvested == player.chipsInvested) {
             playersAtRisk++;
@@ -706,19 +788,18 @@ abstract class APokerTable implements IPokerTable {
       // NOTE for now we will round up for splits
       // distribute earned chips to each winner, adjust win amount by # players in pot
       winners.forEach((playerShowdownInfo) => {
+        // in a given winner, calculate their total contributed preflop
         const targetPlayer = playerShowdownInfo.player;
-        const maxBetPreflopByTargetPlayer = this.preFlopBettingHistory
-          .filter((betAction) => betAction.player === targetPlayer)
-          .sort((b1, b2) => b2.getAmount() - b1.getAmount())[0]
-          .getAmount();
-        const preflopBetsWinnerCanCollect: number[] = [
-          maxBetPreflopByTargetPlayer,
-        ];
-        this.preFlopBettingHistory.forEach((betAction) => {
-          if (betAction.getAmount() <= maxBetPreflopByTargetPlayer) {
-            preflopBetsWinnerCanCollect.push(betAction.getAmount());
+        const totalContributedPreflopByTargetPlayer =
+          totalContributedByEachPlayerPreflop.get(targetPlayer);
+        let preFlopWinnings = totalContributedPreflopByTargetPlayer;
+        // the most they can collect is the total contributed by all the other players <= their total contributed
+        // PLUS (the amount of players that contributed more than their total) * (their total contributed)
+        totalContributedByEachPlayerPreflop.forEach((chips) => {
+          if (chips <= totalContributedPreflopByTargetPlayer) {
+            preFlopWinnings += chips;
           } else {
-            preflopBetsWinnerCanCollect.push(maxBetPreflopByTargetPlayer);
+            preFlopWinnings += totalContributedPreflopByTargetPlayer;
           }
         });
         let allInPreflop = false;
@@ -731,29 +812,21 @@ abstract class APokerTable implements IPokerTable {
         if (allInPreflop) {
           returnWinners.push({
             player: targetPlayer,
-            chips: Math.ceil(
-              preflopBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0) /
-                winners.length
-            ),
+            chips: Math.ceil(preFlopWinnings / winners.length),
           });
-          remainingPot -= preflopBetsWinnerCanCollect.reduce(
-            (acc, curr) => acc + curr,
-            0
-          );
+          remainingPot -= preFlopWinnings;
         } else {
-          const maxBetFlopByTargetPlayer = this.flopBettingHistory
-            .filter((betAction) => betAction.player === targetPlayer)
-            .sort((b1, b2) => b2.getAmount() - b1.getAmount())[0]
-            .getAmount();
-          const flopBetsWinnerCanCollect: number[] = [maxBetFlopByTargetPlayer];
-          this.flopBettingHistory.forEach((betAction) => {
-            if (betAction.getAmount() <= maxBetFlopByTargetPlayer) {
-              flopBetsWinnerCanCollect.push(betAction.getAmount());
+          const targetPlayer = playerShowdownInfo.player;
+          const totalContributedFlopByTargetPlayer =
+            totalContributedByEachPlayerFlop.get(targetPlayer);
+          let flopWinnings = totalContributedFlopByTargetPlayer;
+          totalContributedByEachPlayerFlop.forEach((chips) => {
+            if (chips <= totalContributedFlopByTargetPlayer) {
+              flopWinnings += chips;
             } else {
-              flopBetsWinnerCanCollect.push(maxBetFlopByTargetPlayer);
+              flopWinnings += totalContributedFlopByTargetPlayer;
             }
           });
-
           let allInFlop = false;
           this.flopBettingHistory.forEach((betAction) => {
             if (betAction.allIn && betAction.player === targetPlayer) {
@@ -765,36 +838,22 @@ abstract class APokerTable implements IPokerTable {
             returnWinners.push({
               player: targetPlayer,
               chips: Math.ceil(
-                (preflopBetsWinnerCanCollect.reduce(
-                  (acc, curr) => acc + curr,
-                  0
-                ) +
-                  flopBetsWinnerCanCollect.reduce(
-                    (acc, curr) => acc + curr,
-                    0
-                  )) /
-                  winners.length
+                (preFlopWinnings + flopWinnings) / winners.length
               ),
             });
-            remainingPot -=
-              preflopBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0) +
-              flopBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0);
+            remainingPot -= preFlopWinnings + flopWinnings;
           } else {
-            const maxBetTurnByTargetPlayer = this.turnBettingHistory
-              .filter((betAction) => betAction.player === targetPlayer)
-              .sort((b1, b2) => b2.getAmount() - b1.getAmount())[0]
-              .getAmount();
-            const turnBetsWinnerCanCollect: number[] = [
-              maxBetTurnByTargetPlayer,
-            ];
-            this.turnBettingHistory.forEach((betAction) => {
-              if (betAction.getAmount() <= maxBetTurnByTargetPlayer) {
-                turnBetsWinnerCanCollect.push(betAction.getAmount());
+            const targetPlayer = playerShowdownInfo.player;
+            const totalContributedTurnByTargetPlayer =
+              totalContributedByEachPlayerTurn.get(targetPlayer);
+            let turnWinnings = totalContributedTurnByTargetPlayer;
+            totalContributedByEachPlayerTurn.forEach((chips) => {
+              if (chips <= totalContributedTurnByTargetPlayer) {
+                turnWinnings += chips;
               } else {
-                turnBetsWinnerCanCollect.push(maxBetTurnByTargetPlayer);
+                turnWinnings += totalContributedTurnByTargetPlayer;
               }
             });
-
             let allInTurn = false;
             this.turnBettingHistory.forEach((betAction) => {
               if (betAction.allIn && betAction.player === targetPlayer) {
@@ -806,95 +865,48 @@ abstract class APokerTable implements IPokerTable {
               returnWinners.push({
                 player: targetPlayer,
                 chips: Math.ceil(
-                  (preflopBetsWinnerCanCollect.reduce(
-                    (acc, curr) => acc + curr,
-                    0
-                  ) +
-                    flopBetsWinnerCanCollect.reduce(
-                      (acc, curr) => acc + curr,
-                      0
-                    ) +
-                    turnBetsWinnerCanCollect.reduce(
-                      (acc, curr) => acc + curr,
-                      0
-                    )) /
+                  (preFlopWinnings + flopWinnings + turnWinnings) /
                     winners.length
                 ),
               });
-              remainingPot -=
-                preflopBetsWinnerCanCollect.reduce(
-                  (acc, curr) => acc + curr,
-                  0
-                ) +
-                flopBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0) +
-                turnBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0);
+              remainingPot -= preFlopWinnings + flopWinnings + turnWinnings;
             } else {
-              const maxBetRiverByTargetPlayer = this.riverBettingHistory
-                .filter((betAction) => betAction.player === targetPlayer)
-                .sort((b1, b2) => b2.getAmount() - b1.getAmount())[0]
-                .getAmount();
-              const riverBetsWinnerCanCollect: number[] = [
-                maxBetRiverByTargetPlayer,
-              ];
-              this.riverBettingHistory.forEach((betAction) => {
-                if (betAction.getAmount() <= maxBetRiverByTargetPlayer) {
-                  riverBetsWinnerCanCollect.push(betAction.getAmount());
+              const targetPlayer = playerShowdownInfo.player;
+              const totalContributedRiverByTargetPlayer =
+                totalContributedByEachPlayerRiver.get(targetPlayer);
+              let riverWinnings = totalContributedRiverByTargetPlayer;
+              totalContributedByEachPlayerRiver.forEach((chips) => {
+                if (chips <= totalContributedRiverByTargetPlayer) {
+                  riverWinnings += chips;
                 } else {
-                  riverBetsWinnerCanCollect.push(maxBetRiverByTargetPlayer);
+                  riverWinnings += totalContributedRiverByTargetPlayer;
                 }
               });
 
               returnWinners.push({
                 player: targetPlayer,
                 chips: Math.ceil(
-                  (preflopBetsWinnerCanCollect.reduce(
-                    (acc, curr) => acc + curr,
-                    0
-                  ) +
-                    flopBetsWinnerCanCollect.reduce(
-                      (acc, curr) => acc + curr,
-                      0
-                    ) +
-                    turnBetsWinnerCanCollect.reduce(
-                      (acc, curr) => acc + curr,
-                      0
-                    ) +
-                    riverBetsWinnerCanCollect.reduce(
-                      (acc, curr) => acc + curr,
-                      0
-                    )) /
+                  (preFlopWinnings +
+                    flopWinnings +
+                    turnWinnings +
+                    riverWinnings) /
                     winners.length
                 ),
               });
 
               remainingPot -=
-                preflopBetsWinnerCanCollect.reduce(
-                  (acc, curr) => acc + curr,
-                  0
-                ) +
-                flopBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0) +
-                turnBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0) +
-                riverBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0);
+                preFlopWinnings + flopWinnings + turnWinnings + riverWinnings;
             }
           }
         }
       });
-
-      // build eliminated players
-      // const listOfPlayersAtRisk = winners.slice(0, playersAtRisk);
-      // for (const playerShowdownInfo of listOfPlayersAtRisk) {
-      //   if (
-      //     winners.find((winner) => winner.player === playerShowdownInfo.player)
-      //   ) {
-      //     returnEliminated.push({ player: playerShowdownInfo.player });
-      //   }
-      // }
 
       playersAtShowdownInvestment.splice(0, playersAtRisk);
     }
 
     return;
   }
+  // given a list of players, determine the winning hands
   private getWinners(
     players: {
       player: IPlayer;
@@ -906,6 +918,7 @@ abstract class APokerTable implements IPokerTable {
     chipsInvested: number;
     hand: IHand;
   }[] {
+    // sort them by hand strength
     const handsInDescOrder = [...players].sort((p1, p2) =>
       p2.hand.compareHand(p1.hand)
     );
@@ -914,6 +927,7 @@ abstract class APokerTable implements IPokerTable {
       chipsInvested: number;
       hand: IHand;
     }[] = [];
+    // return all ties as well
     for (const hand of handsInDescOrder) {
       if (returnArr.length == 0) {
         returnArr.push(hand);
@@ -927,7 +941,8 @@ abstract class APokerTable implements IPokerTable {
       }
     }
   }
-  calculateBestPlayerHand(holeCards: Card[]): IHand {
+  // NOTE does not support PLO override yet
+  protected calculateBestPlayerHand(holeCards: Card[]): IHand {
     const boardAndHoleCards = this.flop
       .concat(this.turn)
       .concat(this.river)
@@ -1233,8 +1248,20 @@ abstract class APokerTable implements IPokerTable {
       highCards[4].value
     );
   }
+  // NOTE does not support PLO override yet
+  protected dealUniqueHoleCards() {
+    const deck: Card[] = shuffleArray(generateDeck());
+    this.aliveSeatingArrangement.forEach((player) => {
+      if (player.stack > 0) {
+        const holeCards: Card[] = [];
+        holeCards.push(deck.pop(), deck.pop());
+        player.holeCards = holeCards;
+      }
+    });
+  }
 }
 
+// An implementation of a PokerTable that is not yet supported
 class PLOTable extends APokerTable {
   constructor(
     name: string,
@@ -1261,6 +1288,7 @@ class PLOTable extends APokerTable {
   }
 }
 
+// A NLH PokerTable
 class NLHTable extends APokerTable {
   constructor(
     name: string,
@@ -1287,16 +1315,19 @@ class NLHTable extends APokerTable {
   }
 }
 
+// Represents all needed info about a bet that a player makes
 export interface IBetAction {
   allIn: boolean;
   player: IPlayer;
   getAmount(): number;
 }
 
+// the interface adds an amount to the BetAction if needed
 interface IBetActionWithAmount extends IBetAction {
   amount: number;
 }
 
+// Blind can be any of the three blinds
 export class Blind implements IBetActionWithAmount {
   allIn: boolean;
   player: IPlayer;
@@ -1306,6 +1337,7 @@ export class Blind implements IBetActionWithAmount {
   }
 }
 
+// Bet requires a lead out on a new phase
 export class Bet implements IBetActionWithAmount {
   allIn: boolean;
   player: IPlayer;
@@ -1315,6 +1347,7 @@ export class Bet implements IBetActionWithAmount {
   }
 }
 
+// Can call a blind, bet, or raise in the past
 export class Call implements IBetActionWithAmount {
   allIn: boolean;
   player: IPlayer;
@@ -1324,6 +1357,7 @@ export class Call implements IBetActionWithAmount {
   }
 }
 
+// Can raise a bet in the past
 export class Raise implements IBetActionWithAmount {
   allIn: boolean;
   player: IPlayer;
@@ -1333,6 +1367,8 @@ export class Raise implements IBetActionWithAmount {
   }
 }
 
+// Can check as largest blind if limped around preflop or at the
+// start of new betting phase given everyone before has checked
 export class Check implements IBetAction {
   allIn: boolean;
   player: IPlayer;
@@ -1341,6 +1377,7 @@ export class Check implements IBetAction {
   }
 }
 
+// Can fold to any bet, blind, or raise in the past
 export class Fold implements IBetAction {
   allIn: boolean;
   player: IPlayer;
@@ -1353,11 +1390,7 @@ export class Fold implements IBetAction {
   }
 }
 
-enum PokerVariantType {
-  NLH = "NLH",
-  PLO = "PLO",
-}
-
+// Represents a card
 export class Card {
   readonly value: CardValue;
   readonly suit: CardSuit;
@@ -1368,6 +1401,7 @@ export class Card {
   }
 }
 
+// The card values
 export enum CardValue {
   ACE = "ACE",
   TWO = "TWO",
@@ -1384,6 +1418,7 @@ export enum CardValue {
   KING = "KING",
 }
 
+// The card suits
 export enum CardSuit {
   HEART = "HEART",
   DIAMOND = "DIAMOND",
@@ -1391,6 +1426,7 @@ export enum CardSuit {
   SPADE = "SPADE",
 }
 
+// The phase of betting we are on
 export enum BettingStage {
   PREFLOP = "PREFLOP",
   FLOP = "FLOP",
@@ -1398,11 +1434,13 @@ export enum BettingStage {
   RIVER = "RIVER",
 }
 
+// Represents the best 5 card hand that can be made, with kickers
 export interface IHand {
   // returns positive if first hand is better than the other hand, negative vise versa
   // returns 0 if both hands are the exact same strength
   compareHand(other: IHand): number;
 }
+// Worst class of hand
 class HighCard implements IHand {
   firstKicker: CardValue;
   secondKicker: CardValue;
@@ -1444,6 +1482,7 @@ class HighCard implements IHand {
     }
   }
 }
+// Beats high card
 class Pair implements IHand {
   pair: CardValue;
   firstKicker: CardValue;
@@ -1482,7 +1521,7 @@ class Pair implements IHand {
     }
   }
 }
-
+// Beats a pair and anything lower
 class TwoPair implements IHand {
   highPair: CardValue;
   lowPair: CardValue;
@@ -1504,7 +1543,7 @@ class TwoPair implements IHand {
     }
   }
 }
-
+// Beats two pair and anything lower
 class Trips implements IHand {
   tripValue: CardValue;
   firstKicker: CardValue;
@@ -1538,7 +1577,7 @@ class Trips implements IHand {
     }
   }
 }
-
+// Beats trips and anything lower
 class Straight implements IHand {
   highestCard: CardValue;
   constructor(highestCard: CardValue) {
@@ -1559,7 +1598,7 @@ class Straight implements IHand {
     }
   }
 }
-
+// Beats straight and anything lower
 class Flush implements IHand {
   firstKicker: CardValue;
   secondKicker: CardValue;
@@ -1608,7 +1647,7 @@ class Flush implements IHand {
     }
   }
 }
-
+// Beats flush and anything lower
 class FullHouse implements IHand {
   tripValue: CardValue;
   pairValue: CardValue;
@@ -1636,7 +1675,7 @@ class FullHouse implements IHand {
     }
   }
 }
-
+// Beats full house and anything lower
 class Quads implements IHand {
   quadValue: CardValue;
   firstKicker: CardValue;
@@ -1657,7 +1696,7 @@ class Quads implements IHand {
     }
   }
 }
-
+// Beats everything, royal flush -> highestCard = CardValue.Ace
 class StraightFlush implements IHand {
   highestCard: CardValue;
   constructor(highestCard: CardValue) {
