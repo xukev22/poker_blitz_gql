@@ -1,7 +1,11 @@
 import {
   calculateNewBlindMultiplier,
+  calculateNewElo,
+  cardValueToNumberRep,
+  compareArrays,
   generateDeck,
   getCurrentBettingHistory,
+  numberRepToCardValue,
 } from "../utils";
 import { IPlayer } from "./players";
 
@@ -43,6 +47,8 @@ export interface IPokerTable {
   advanceBettingAction(): void;
   calculateTotalPot(): number;
   endHand(): void;
+  determineWinnersAndHowMuch(): { player: IPlayer; chips: number }[];
+  calculateBestPlayerHand(holeCards: Card[]): IHand;
 }
 
 abstract class APokerTable implements IPokerTable {
@@ -424,6 +430,7 @@ abstract class APokerTable implements IPokerTable {
   }
   resetTableVars(): void {
     delete this.option;
+    delete this.bettingStage;
     delete this.preFlopBettingHistory;
     delete this.flopBettingHistory;
     delete this.turnBettingHistory;
@@ -431,7 +438,6 @@ abstract class APokerTable implements IPokerTable {
     delete this.flop;
     delete this.turn;
     delete this.river;
-    delete this.bettingStage;
 
     this.currentSB = this.startingSB;
     this.currentBB = this.startingBB;
@@ -532,27 +538,700 @@ abstract class APokerTable implements IPokerTable {
   calculateTotalPot(): number {
     let totalPot = 0;
     this.preFlopBettingHistory.forEach(
-      (betAction) =>
-        (totalPot += betAction.getAmount() ? betAction.getAmount() : 0)
+      (betAction) => (totalPot += betAction.getAmount())
     );
     this.flopBettingHistory.forEach(
-      (betAction) =>
-        (totalPot += betAction.getAmount() ? betAction.getAmount() : 0)
+      (betAction) => (totalPot += betAction.getAmount())
     );
     this.turnBettingHistory.forEach(
-      (betAction) =>
-        (totalPot += betAction.getAmount() ? betAction.getAmount() : 0)
+      (betAction) => (totalPot += betAction.getAmount())
     );
     this.riverBettingHistory.forEach(
-      (betAction) =>
-        (totalPot += betAction.getAmount() ? betAction.getAmount() : 0)
+      (betAction) => (totalPot += betAction.getAmount())
     );
     return totalPot;
   }
+  // determines winner(s), distributes chips accordingly, adjusts elo, resets the table/hand vars
+  // NOTE if everyone folded prior then that was handled in advanceAction
+  // NOTE that double/multi KO position tiebreakers not handled yet (i.e person with bigger stack should finish higher than other person if both KO)
   endHand(): void {
-    // determines winner(s), distributes chips accordingly, adjusts elo, resets the table/hand vars
-    // const winnerOfMainPot = this.determineWinner(this.aliveSeatingArrangement);
-    // TODO determineWinner(players) returns list of players
+    let finishPosition = this.aliveSeatingArrangement.length();
+    const winners = this.determineWinnersAndHowMuch();
+    for (const winner of winners) {
+      this.aliveSeatingArrangement.find(winner.player).data.stack +=
+        winner.chips;
+    }
+
+    // for each loser if they stack is 0 sort them by starting stack at hand start
+    const newSeatingArrangement = this.aliveSeatingArrangement.clone();
+    this.aliveSeatingArrangement.forEach((player) => {
+      if (player.stack == 0) {
+        newSeatingArrangement.remove(player);
+        player.elo = calculateNewElo(
+          player.elo,
+          finishPosition,
+          this.startingElos
+        );
+        finishPosition -= 1;
+      }
+    });
+    this.aliveSeatingArrangement = newSeatingArrangement;
+
+    this.resetHandVars();
+    this.handInProgress = false;
+
+    if (this.aliveSeatingArrangement.length() == 1) {
+      calculateNewElo(
+        this.aliveSeatingArrangement.head.data.elo,
+        1,
+        this.startingElos
+      );
+      delete this.currentSB;
+      delete this.currentBB;
+      delete this.currentST;
+      delete this.hand;
+      delete this.option;
+      delete this.flop;
+      delete this.turn;
+      delete this.river;
+      delete this.aliveSeatingArrangement;
+      delete this.bettingStage;
+      delete this.preFlopBettingHistory;
+      delete this.flopBettingHistory;
+      delete this.turnBettingHistory;
+      delete this.riverBettingHistory;
+      delete this.startingElos;
+      this.tableInProgress = false;
+      return;
+    }
+  }
+  determineWinnersAndHowMuch(): { player: IPlayer; chips: number }[] {
+    const wholeBettingHistory = this.preFlopBettingHistory
+      .concat(this.flopBettingHistory)
+      .concat(this.turnBettingHistory)
+      .concat(this.riverBettingHistory);
+    const playersAtShowdown = this.aliveSeatingArrangement.clone();
+    const playersAtShowdownInvestment: {
+      player: IPlayer;
+      chipsInvested: number;
+      hand: IHand;
+    }[] = [];
+    wholeBettingHistory.forEach((betAction) => {
+      if (betAction instanceof Fold) {
+        playersAtShowdown.remove(betAction.player);
+      }
+    });
+    playersAtShowdown.forEach((player) =>
+      playersAtShowdownInvestment.push({
+        player: player,
+        chipsInvested: 0,
+        hand: null,
+      })
+    );
+    playersAtShowdownInvestment.map((pair) => {
+      let chipsInvested = 0;
+      wholeBettingHistory.forEach((betAction) => {
+        if (betAction.player === pair.player) {
+          chipsInvested += betAction.getAmount();
+        }
+      });
+      return {
+        player: pair.player,
+        chipsInvested: chipsInvested,
+        // NOTE omaha not supported yet, would be overridden in each table class impl
+        hand: this.calculateBestPlayerHand(pair.player.holeCards),
+      };
+    });
+
+    // at this point playersAtShowdownInvestment is fully filled, now we sort in asc by chips invested
+    playersAtShowdownInvestment.sort(
+      (p1, p2) => p1.chipsInvested - p2.chipsInvested
+    );
+
+    // const distinctChipsInvested = new Set<number>();
+    // for (const playerShowdownInfo of playersAtShowdownInvestment) {
+    //   distinctChipsInvested.add(playerShowdownInfo.chipsInvested);
+    // }
+
+    const returnWinners: { player: IPlayer; chips: number }[] = [];
+    // const returnEliminated: { player: IPlayer }[] = [];
+
+    let currentPot = playersAtShowdownInvestment;
+    let remainingPot = this.calculateTotalPot();
+    while (playersAtShowdownInvestment.length > 0) {
+      if (playersAtShowdownInvestment.length == 1) {
+        const targetPlayerWithOverflow = returnWinners.find(
+          (winner) => winner.player === playersAtShowdownInvestment[0].player
+        );
+        if (targetPlayerWithOverflow) {
+          returnWinners.forEach((winner) => {
+            if (winner.player === targetPlayerWithOverflow.player) {
+              winner = {
+                ...winner,
+                chips: winner.chips + Math.floor(remainingPot),
+              };
+            }
+          });
+        } else {
+          returnWinners.push({
+            player: targetPlayerWithOverflow.player,
+            chips: Math.floor(remainingPot),
+          });
+        }
+      }
+
+      let playersAtRisk = 0;
+      let smallestChipsInvested = null;
+      // determine # players at risk, NOTE should be at least one
+      currentPot.forEach((player) => {
+        if (player.chipsInvested) {
+          if (smallestChipsInvested == player.chipsInvested) {
+            playersAtRisk++;
+          }
+        } else {
+          playersAtRisk = 1;
+          smallestChipsInvested = player.chipsInvested;
+        }
+      });
+
+      // determine winner(s) of pot
+      const winners: {
+        player: IPlayer;
+        chipsInvested: number;
+        hand: IHand;
+      }[] = this.getWinners(playersAtShowdownInvestment);
+
+      // most can win is preflop pot + flop pot ... : then add all bets on shoved phase that are <= shove amount
+      // + n(shove amount) where n is the amount of bets > shove amount
+      // NOTE for now we will round up for splits
+      // distribute earned chips to each winner, adjust win amount by # players in pot
+      winners.forEach((playerShowdownInfo) => {
+        const targetPlayer = playerShowdownInfo.player;
+        const maxBetPreflopByTargetPlayer = this.preFlopBettingHistory
+          .filter((betAction) => betAction.player === targetPlayer)
+          .sort((b1, b2) => b2.getAmount() - b1.getAmount())[0]
+          .getAmount();
+        const preflopBetsWinnerCanCollect: number[] = [
+          maxBetPreflopByTargetPlayer,
+        ];
+        this.preFlopBettingHistory.forEach((betAction) => {
+          if (betAction.getAmount() <= maxBetPreflopByTargetPlayer) {
+            preflopBetsWinnerCanCollect.push(betAction.getAmount());
+          } else {
+            preflopBetsWinnerCanCollect.push(maxBetPreflopByTargetPlayer);
+          }
+        });
+        let allInPreflop = false;
+        this.preFlopBettingHistory.forEach((betAction) => {
+          if (betAction.allIn && betAction.player === targetPlayer) {
+            allInPreflop = true;
+          }
+        });
+
+        if (allInPreflop) {
+          returnWinners.push({
+            player: targetPlayer,
+            chips: Math.ceil(
+              preflopBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0) /
+                winners.length
+            ),
+          });
+          remainingPot -= preflopBetsWinnerCanCollect.reduce(
+            (acc, curr) => acc + curr,
+            0
+          );
+        } else {
+          const maxBetFlopByTargetPlayer = this.flopBettingHistory
+            .filter((betAction) => betAction.player === targetPlayer)
+            .sort((b1, b2) => b2.getAmount() - b1.getAmount())[0]
+            .getAmount();
+          const flopBetsWinnerCanCollect: number[] = [maxBetFlopByTargetPlayer];
+          this.flopBettingHistory.forEach((betAction) => {
+            if (betAction.getAmount() <= maxBetFlopByTargetPlayer) {
+              flopBetsWinnerCanCollect.push(betAction.getAmount());
+            } else {
+              flopBetsWinnerCanCollect.push(maxBetFlopByTargetPlayer);
+            }
+          });
+
+          let allInFlop = false;
+          this.flopBettingHistory.forEach((betAction) => {
+            if (betAction.allIn && betAction.player === targetPlayer) {
+              allInFlop = true;
+            }
+          });
+
+          if (allInFlop) {
+            returnWinners.push({
+              player: targetPlayer,
+              chips: Math.ceil(
+                (preflopBetsWinnerCanCollect.reduce(
+                  (acc, curr) => acc + curr,
+                  0
+                ) +
+                  flopBetsWinnerCanCollect.reduce(
+                    (acc, curr) => acc + curr,
+                    0
+                  )) /
+                  winners.length
+              ),
+            });
+            remainingPot -=
+              preflopBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0) +
+              flopBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0);
+          } else {
+            const maxBetTurnByTargetPlayer = this.turnBettingHistory
+              .filter((betAction) => betAction.player === targetPlayer)
+              .sort((b1, b2) => b2.getAmount() - b1.getAmount())[0]
+              .getAmount();
+            const turnBetsWinnerCanCollect: number[] = [
+              maxBetTurnByTargetPlayer,
+            ];
+            this.turnBettingHistory.forEach((betAction) => {
+              if (betAction.getAmount() <= maxBetTurnByTargetPlayer) {
+                turnBetsWinnerCanCollect.push(betAction.getAmount());
+              } else {
+                turnBetsWinnerCanCollect.push(maxBetTurnByTargetPlayer);
+              }
+            });
+
+            let allInTurn = false;
+            this.turnBettingHistory.forEach((betAction) => {
+              if (betAction.allIn && betAction.player === targetPlayer) {
+                allInTurn = true;
+              }
+            });
+
+            if (allInTurn) {
+              returnWinners.push({
+                player: targetPlayer,
+                chips: Math.ceil(
+                  (preflopBetsWinnerCanCollect.reduce(
+                    (acc, curr) => acc + curr,
+                    0
+                  ) +
+                    flopBetsWinnerCanCollect.reduce(
+                      (acc, curr) => acc + curr,
+                      0
+                    ) +
+                    turnBetsWinnerCanCollect.reduce(
+                      (acc, curr) => acc + curr,
+                      0
+                    )) /
+                    winners.length
+                ),
+              });
+              remainingPot -=
+                preflopBetsWinnerCanCollect.reduce(
+                  (acc, curr) => acc + curr,
+                  0
+                ) +
+                flopBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0) +
+                turnBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0);
+            } else {
+              const maxBetRiverByTargetPlayer = this.riverBettingHistory
+                .filter((betAction) => betAction.player === targetPlayer)
+                .sort((b1, b2) => b2.getAmount() - b1.getAmount())[0]
+                .getAmount();
+              const riverBetsWinnerCanCollect: number[] = [
+                maxBetRiverByTargetPlayer,
+              ];
+              this.riverBettingHistory.forEach((betAction) => {
+                if (betAction.getAmount() <= maxBetRiverByTargetPlayer) {
+                  riverBetsWinnerCanCollect.push(betAction.getAmount());
+                } else {
+                  riverBetsWinnerCanCollect.push(maxBetRiverByTargetPlayer);
+                }
+              });
+
+              returnWinners.push({
+                player: targetPlayer,
+                chips: Math.ceil(
+                  (preflopBetsWinnerCanCollect.reduce(
+                    (acc, curr) => acc + curr,
+                    0
+                  ) +
+                    flopBetsWinnerCanCollect.reduce(
+                      (acc, curr) => acc + curr,
+                      0
+                    ) +
+                    turnBetsWinnerCanCollect.reduce(
+                      (acc, curr) => acc + curr,
+                      0
+                    ) +
+                    riverBetsWinnerCanCollect.reduce(
+                      (acc, curr) => acc + curr,
+                      0
+                    )) /
+                    winners.length
+                ),
+              });
+
+              remainingPot -=
+                preflopBetsWinnerCanCollect.reduce(
+                  (acc, curr) => acc + curr,
+                  0
+                ) +
+                flopBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0) +
+                turnBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0) +
+                riverBetsWinnerCanCollect.reduce((acc, curr) => acc + curr, 0);
+            }
+          }
+        }
+      });
+
+      // build eliminated players
+      // const listOfPlayersAtRisk = winners.slice(0, playersAtRisk);
+      // for (const playerShowdownInfo of listOfPlayersAtRisk) {
+      //   if (
+      //     winners.find((winner) => winner.player === playerShowdownInfo.player)
+      //   ) {
+      //     returnEliminated.push({ player: playerShowdownInfo.player });
+      //   }
+      // }
+
+      playersAtShowdownInvestment.splice(0, playersAtRisk);
+    }
+
+    return;
+  }
+  private getWinners(
+    players: {
+      player: IPlayer;
+      chipsInvested: number;
+      hand: IHand;
+    }[]
+  ): {
+    player: IPlayer;
+    chipsInvested: number;
+    hand: IHand;
+  }[] {
+    const handsInDescOrder = [...players].sort((p1, p2) =>
+      p2.hand.compareHand(p1.hand)
+    );
+    const returnArr: {
+      player: IPlayer;
+      chipsInvested: number;
+      hand: IHand;
+    }[] = [];
+    for (const hand of handsInDescOrder) {
+      if (returnArr.length == 0) {
+        returnArr.push(hand);
+      } else {
+        const lastElement = returnArr[returnArr.length - 1];
+        if (lastElement.hand.compareHand(hand.hand) == 0) {
+          returnArr.push(hand);
+        } else {
+          return returnArr;
+        }
+      }
+    }
+  }
+  calculateBestPlayerHand(holeCards: Card[]): IHand {
+    const boardAndHoleCards = this.flop
+      .concat(this.turn)
+      .concat(this.river)
+      .concat(holeCards);
+    let spadeCount = 0;
+    let clubCount = 0;
+    let heartCount = 0;
+    let diamondCount = 0;
+    boardAndHoleCards.forEach((card) => {
+      switch (card.suit) {
+        case CardSuit.SPADE:
+          spadeCount++;
+          break;
+        case CardSuit.CLUB:
+          clubCount++;
+          break;
+        case CardSuit.HEART:
+          heartCount++;
+          break;
+        case CardSuit.DIAMOND:
+          diamondCount++;
+          break;
+      }
+    });
+
+    let hasFlush: false | CardSuit = false;
+
+    if (spadeCount >= 5) {
+      hasFlush = CardSuit.SPADE;
+    } else if (clubCount >= 5) {
+      hasFlush = CardSuit.CLUB;
+    } else if (heartCount >= 5) {
+      hasFlush = CardSuit.HEART;
+    } else if (diamondCount >= 5) {
+      hasFlush = CardSuit.DIAMOND;
+    }
+
+    let hasStraight: false | CardValue = false;
+    if (
+      boardAndHoleCards.some((card) => card.value === CardValue.ACE) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.KING) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.QUEEN) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.JACK) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.TEN)
+    ) {
+      hasStraight = CardValue.ACE;
+    } else if (
+      boardAndHoleCards.some((card) => card.value === CardValue.NINE) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.KING) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.QUEEN) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.JACK) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.TEN)
+    ) {
+      hasStraight = CardValue.KING;
+    } else if (
+      boardAndHoleCards.some((card) => card.value === CardValue.NINE) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.EIGHT) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.QUEEN) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.JACK) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.TEN)
+    ) {
+      hasStraight = CardValue.QUEEN;
+    } else if (
+      boardAndHoleCards.some((card) => card.value === CardValue.NINE) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.EIGHT) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.SEVEN) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.JACK) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.TEN)
+    ) {
+      hasStraight = CardValue.JACK;
+    } else if (
+      boardAndHoleCards.some((card) => card.value === CardValue.NINE) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.EIGHT) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.SEVEN) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.SIX) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.TEN)
+    ) {
+      hasStraight = CardValue.TEN;
+    } else if (
+      boardAndHoleCards.some((card) => card.value === CardValue.NINE) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.EIGHT) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.SEVEN) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.SIX) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.FIVE)
+    ) {
+      hasStraight = CardValue.NINE;
+    } else if (
+      boardAndHoleCards.some((card) => card.value === CardValue.FOUR) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.EIGHT) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.SEVEN) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.SIX) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.FIVE)
+    ) {
+      hasStraight = CardValue.EIGHT;
+    } else if (
+      boardAndHoleCards.some((card) => card.value === CardValue.FOUR) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.THREE) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.SEVEN) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.SIX) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.FIVE)
+    ) {
+      hasStraight = CardValue.SEVEN;
+    } else if (
+      boardAndHoleCards.some((card) => card.value === CardValue.FOUR) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.THREE) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.TWO) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.SIX) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.FIVE)
+    ) {
+      hasStraight = CardValue.SIX;
+    } else if (
+      boardAndHoleCards.some((card) => card.value === CardValue.FOUR) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.THREE) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.TWO) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.ACE) &&
+      boardAndHoleCards.some((card) => card.value === CardValue.FIVE)
+    ) {
+      hasStraight = CardValue.FIVE;
+    }
+
+    if (hasFlush && hasStraight) {
+      return new StraightFlush(hasStraight);
+    }
+
+    const cardValueMap = new Map<CardValue, number>();
+    boardAndHoleCards.forEach((card) => {
+      if (cardValueMap.get(card.value)) {
+        cardValueMap.set(card.value, cardValueMap.get(card.value) + 1);
+      } else {
+        cardValueMap.set(card.value, 1);
+      }
+    });
+
+    let hasQuads: false | CardValue = false;
+    for (const cardValueFrequencyPair of cardValueMap.entries()) {
+      if (cardValueFrequencyPair[1] == 4) {
+        hasQuads = cardValueFrequencyPair[0];
+      }
+    }
+
+    if (hasQuads) {
+      let highestValueSeenNotQuadValue = 0;
+      for (const card of boardAndHoleCards) {
+        if (
+          cardValueToNumberRep(card.value) > highestValueSeenNotQuadValue &&
+          card.value != hasQuads
+        ) {
+          highestValueSeenNotQuadValue = cardValueToNumberRep(card.value);
+        }
+      }
+      return new Quads(
+        hasQuads,
+        numberRepToCardValue(highestValueSeenNotQuadValue)
+      );
+    }
+
+    // biggest trips
+    let hasTrips: false | CardValue = false;
+    for (const cardValueFrequencyPair of cardValueMap.entries()) {
+      let highestTripsSeen = 0;
+      if (
+        cardValueFrequencyPair[1] == 3 &&
+        cardValueToNumberRep(cardValueFrequencyPair[0]) > highestTripsSeen
+      ) {
+        hasTrips = cardValueFrequencyPair[0];
+      }
+    }
+
+    // NOTE this does nothing if no full house present
+    if (hasTrips) {
+      let biggestPairOtherThanTheTrips = 0;
+      for (const cardValueFrequencyPair of cardValueMap.entries()) {
+        if (
+          cardValueFrequencyPair[1] >= 2 &&
+          cardValueToNumberRep(cardValueFrequencyPair[0]) >
+            biggestPairOtherThanTheTrips &&
+          cardValueFrequencyPair[0] != hasTrips
+        ) {
+          biggestPairOtherThanTheTrips = cardValueToNumberRep(
+            cardValueFrequencyPair[0]
+          );
+        }
+      }
+      if (biggestPairOtherThanTheTrips != 0) {
+        return new FullHouse(
+          hasTrips,
+          numberRepToCardValue(biggestPairOtherThanTheTrips)
+        );
+      }
+    }
+
+    if (hasFlush) {
+      const flushCards = boardAndHoleCards
+        .filter((card) => card.suit != hasFlush)
+        .sort((c1, c2) => {
+          const c1NumVal = cardValueToNumberRep(c1.value);
+          const c2NumVal = cardValueToNumberRep(c2.value);
+          return c2NumVal - c1NumVal;
+        });
+      if (flushCards.length < 5) {
+        throw new Error(
+          "Data corruption: Flush detected but less than five cards are same suit"
+        );
+      }
+      return new Flush(
+        flushCards[0].value,
+        flushCards[1].value,
+        flushCards[2].value,
+        flushCards[3].value,
+        flushCards[4].value
+      );
+    }
+
+    if (hasStraight) {
+      return new Straight(hasStraight);
+    }
+
+    if (hasTrips) {
+      const nonTripCards = boardAndHoleCards
+        .filter((card) => card.value != hasTrips)
+        .sort((c1, c2) => {
+          const c1NumVal = cardValueToNumberRep(c1.value);
+          const c2NumVal = cardValueToNumberRep(c2.value);
+          return c2NumVal - c1NumVal;
+        });
+      return new Trips(hasTrips, nonTripCards[0].value, nonTripCards[1].value);
+    }
+
+    // biggest pair
+    let hasPair: false | CardValue = false;
+    for (const cardValueFrequencyPair of cardValueMap.entries()) {
+      let highestPairSeen = 0;
+      if (
+        cardValueFrequencyPair[1] == 2 &&
+        cardValueToNumberRep(cardValueFrequencyPair[0]) > highestPairSeen
+      ) {
+        hasPair = cardValueFrequencyPair[0];
+      }
+    }
+    // NOTE this also handles two pair
+    if (hasPair) {
+      let biggestPairOtherThanTheTopPair = 0;
+      for (const cardValueFrequencyPair of cardValueMap.entries()) {
+        if (
+          cardValueFrequencyPair[1] == 2 &&
+          cardValueToNumberRep(cardValueFrequencyPair[0]) >
+            biggestPairOtherThanTheTopPair &&
+          cardValueFrequencyPair[0] != hasPair
+        ) {
+          biggestPairOtherThanTheTopPair = cardValueToNumberRep(
+            cardValueFrequencyPair[0]
+          );
+        }
+      }
+      if (biggestPairOtherThanTheTopPair != 0) {
+        let highestValueSeenNotEitherPairValue = 0;
+        for (const card of boardAndHoleCards) {
+          if (
+            cardValueToNumberRep(card.value) >
+              highestValueSeenNotEitherPairValue &&
+            card.value != hasPair &&
+            card.value != numberRepToCardValue(biggestPairOtherThanTheTopPair)
+          ) {
+            highestValueSeenNotEitherPairValue = cardValueToNumberRep(
+              card.value
+            );
+          }
+        }
+        return new TwoPair(
+          hasPair,
+          numberRepToCardValue(biggestPairOtherThanTheTopPair),
+          numberRepToCardValue(highestValueSeenNotEitherPairValue)
+        );
+      } else {
+        const nonPairCards = boardAndHoleCards
+          .filter((card) => card.value != hasPair)
+          .sort((c1, c2) => {
+            const c1NumVal = cardValueToNumberRep(c1.value);
+            const c2NumVal = cardValueToNumberRep(c2.value);
+            return c2NumVal - c1NumVal;
+          });
+        return new Pair(
+          hasPair,
+          nonPairCards[0].value,
+          nonPairCards[1].value,
+          nonPairCards[2].value
+        );
+      }
+    }
+
+    // if none of them caught, then we play best 5 high cards
+    const highCards = boardAndHoleCards.sort((c1, c2) => {
+      const c1NumVal = cardValueToNumberRep(c1.value);
+      const c2NumVal = cardValueToNumberRep(c2.value);
+      return c2NumVal - c1NumVal;
+    });
+
+    return new HighCard(
+      highCards[0].value,
+      highCards[1].value,
+      highCards[2].value,
+      highCards[3].value,
+      highCards[4].value
+    );
   }
 }
 
@@ -658,7 +1337,7 @@ export class Check implements IBetAction {
   allIn: boolean;
   player: IPlayer;
   getAmount() {
-    return null;
+    return 0;
   }
 }
 
@@ -670,7 +1349,7 @@ export class Fold implements IBetAction {
     this.player = player;
   }
   getAmount() {
-    return null;
+    return 0;
   }
 }
 
@@ -717,4 +1396,278 @@ export enum BettingStage {
   FLOP = "FLOP",
   TURN = "TURN",
   RIVER = "RIVER",
+}
+
+export interface IHand {
+  // returns positive if first hand is better than the other hand, negative vise versa
+  // returns 0 if both hands are the exact same strength
+  compareHand(other: IHand): number;
+}
+class HighCard implements IHand {
+  firstKicker: CardValue;
+  secondKicker: CardValue;
+  thirdKicker: CardValue;
+  fourthKicker: CardValue;
+  fifthKicker: CardValue;
+  constructor(
+    firstKicker: CardValue,
+    secondKicker: CardValue,
+    thirdKicker: CardValue,
+    fourthKicker: CardValue,
+    fifthKicker: CardValue
+  ) {
+    this.firstKicker = firstKicker;
+    this.secondKicker = secondKicker;
+    this.thirdKicker = thirdKicker;
+    this.fourthKicker = fourthKicker;
+    this.fifthKicker = fifthKicker;
+  }
+  compareHand(other: IHand): number {
+    if (other instanceof HighCard) {
+      const kickersThis = [
+        this.firstKicker,
+        this.secondKicker,
+        this.thirdKicker,
+        this.fourthKicker,
+        this.fifthKicker,
+      ];
+      const kickersOther = [
+        other.firstKicker,
+        other.secondKicker,
+        other.thirdKicker,
+        other.fourthKicker,
+        other.fifthKicker,
+      ];
+      return compareArrays(kickersThis, kickersOther);
+    } else {
+      return -1;
+    }
+  }
+}
+class Pair implements IHand {
+  pair: CardValue;
+  firstKicker: CardValue;
+  secondKicker: CardValue;
+  thirdKicker: CardValue;
+  constructor(
+    pair: CardValue,
+    firstKicker: CardValue,
+    secondKicker: CardValue,
+    thirdKicker: CardValue
+  ) {
+    this.pair = pair;
+    this.firstKicker = firstKicker;
+    this.secondKicker = secondKicker;
+    this.thirdKicker = thirdKicker;
+  }
+  compareHand(other: IHand): number {
+    if (other instanceof HighCard) {
+      return 1;
+    } else if (other instanceof Pair) {
+      const thisList = [
+        this.pair,
+        this.firstKicker,
+        this.secondKicker,
+        this.thirdKicker,
+      ];
+      const otherList = [
+        other.pair,
+        other.firstKicker,
+        other.secondKicker,
+        other.thirdKicker,
+      ];
+      return compareArrays(thisList, otherList);
+    } else {
+      return -1;
+    }
+  }
+}
+
+class TwoPair implements IHand {
+  highPair: CardValue;
+  lowPair: CardValue;
+  firstKicker: CardValue;
+  constructor(highPair: CardValue, lowPair: CardValue, firstKicker: CardValue) {
+    this.highPair = highPair;
+    this.lowPair = lowPair;
+    this.firstKicker = firstKicker;
+  }
+  compareHand(other: IHand): number {
+    if (other instanceof HighCard || other instanceof Pair) {
+      return 1;
+    } else if (other instanceof TwoPair) {
+      const thisList = [this.highPair, this.lowPair, this.firstKicker];
+      const otherList = [other.highPair, other.lowPair, other.firstKicker];
+      return compareArrays(thisList, otherList);
+    } else {
+      return -1;
+    }
+  }
+}
+
+class Trips implements IHand {
+  tripValue: CardValue;
+  firstKicker: CardValue;
+  secondKicker: CardValue;
+  constructor(
+    tripValue: CardValue,
+    firstKicker: CardValue,
+    secondKicker: CardValue
+  ) {
+    this.tripValue = tripValue;
+    this.firstKicker = firstKicker;
+    this.secondKicker = secondKicker;
+  }
+  compareHand(other: IHand): number {
+    if (
+      other instanceof HighCard ||
+      other instanceof Pair ||
+      other instanceof TwoPair
+    ) {
+      return 1;
+    } else if (other instanceof Trips) {
+      const thisList = [this.tripValue, this.firstKicker, this.secondKicker];
+      const otherList = [
+        other.tripValue,
+        other.firstKicker,
+        other.secondKicker,
+      ];
+      return compareArrays(thisList, otherList);
+    } else {
+      return -1;
+    }
+  }
+}
+
+class Straight implements IHand {
+  highestCard: CardValue;
+  constructor(highestCard: CardValue) {
+    this.highestCard = highestCard;
+  }
+  compareHand(other: IHand): number {
+    if (
+      other instanceof HighCard ||
+      other instanceof Pair ||
+      other instanceof TwoPair ||
+      other instanceof Trips
+    ) {
+      return 1;
+    } else if (other instanceof Straight) {
+      return compareArrays([this.highestCard], [other.highestCard]);
+    } else {
+      return -1;
+    }
+  }
+}
+
+class Flush implements IHand {
+  firstKicker: CardValue;
+  secondKicker: CardValue;
+  thirdKicker: CardValue;
+  fourthKicker: CardValue;
+  fifthKicker: CardValue;
+  constructor(
+    firstKicker: CardValue,
+    secondKicker: CardValue,
+    thirdKicker: CardValue,
+    fourthKicker: CardValue,
+    fifthKicker: CardValue
+  ) {
+    this.firstKicker = firstKicker;
+    this.secondKicker = secondKicker;
+    this.thirdKicker = thirdKicker;
+    this.fourthKicker = fourthKicker;
+    this.fifthKicker = fifthKicker;
+  }
+  compareHand(other: IHand): number {
+    if (
+      other instanceof HighCard ||
+      other instanceof Pair ||
+      other instanceof TwoPair ||
+      other instanceof Straight
+    ) {
+      return 1;
+    } else if (other instanceof Flush) {
+      const kickersThis = [
+        this.firstKicker,
+        this.secondKicker,
+        this.thirdKicker,
+        this.fourthKicker,
+        this.fifthKicker,
+      ];
+      const kickersOther = [
+        other.firstKicker,
+        other.secondKicker,
+        other.thirdKicker,
+        other.fourthKicker,
+        other.fifthKicker,
+      ];
+      return compareArrays(kickersThis, kickersOther);
+    } else {
+      return -1;
+    }
+  }
+}
+
+class FullHouse implements IHand {
+  tripValue: CardValue;
+  pairValue: CardValue;
+  constructor(tripValue: CardValue, pairValue: CardValue) {
+    this.tripValue = tripValue;
+    this.pairValue = pairValue;
+  }
+  compareHand(other: IHand): number {
+    if (
+      other instanceof HighCard ||
+      other instanceof Pair ||
+      other instanceof TwoPair ||
+      other instanceof Trips ||
+      other instanceof Straight ||
+      other instanceof Flush
+    ) {
+      return 1;
+    } else if (other instanceof FullHouse) {
+      return compareArrays(
+        [this.tripValue, this.pairValue],
+        [other.tripValue, other.pairValue]
+      );
+    } else {
+      return -1;
+    }
+  }
+}
+
+class Quads implements IHand {
+  quadValue: CardValue;
+  firstKicker: CardValue;
+  constructor(quadValue: CardValue, firstKicker: CardValue) {
+    this.quadValue = quadValue;
+    this.firstKicker = firstKicker;
+  }
+  compareHand(other: IHand): number {
+    if (other instanceof StraightFlush) {
+      return -1;
+    } else if (other instanceof Quads) {
+      return compareArrays(
+        [this.quadValue, this.firstKicker],
+        [other.quadValue, other.firstKicker]
+      );
+    } else {
+      return 1;
+    }
+  }
+}
+
+class StraightFlush implements IHand {
+  highestCard: CardValue;
+  constructor(highestCard: CardValue) {
+    this.highestCard = highestCard;
+  }
+  compareHand(other: IHand): number {
+    if (other instanceof StraightFlush) {
+      return compareArrays([this.highestCard], [other.highestCard]);
+    } else {
+      return 1;
+    }
+  }
 }

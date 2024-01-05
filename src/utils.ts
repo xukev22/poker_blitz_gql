@@ -4,6 +4,7 @@ import {
   CardSuit,
   CardValue,
   IBetAction,
+  IHand,
   IPokerTable,
 } from "./types/tables";
 
@@ -66,4 +67,89 @@ export function getCurrentBettingHistory(table: IPokerTable): IBetAction[] {
       break;
   }
   return bettingHistory;
+}
+
+export function cardValueToNumberRep(cardValue: CardValue): number {
+  switch (cardValue) {
+    case CardValue.ACE:
+      return 14;
+    case CardValue.KING:
+      return 13;
+    case CardValue.QUEEN:
+      return 12;
+    case CardValue.JACK:
+      return 11;
+    case CardValue.TEN:
+      return 10;
+    case CardValue.NINE:
+      return 9;
+    case CardValue.EIGHT:
+      return 8;
+    case CardValue.SEVEN:
+      return 7;
+    case CardValue.SIX:
+      return 6;
+    case CardValue.FIVE:
+      return 5;
+    case CardValue.FOUR:
+      return 4;
+    case CardValue.THREE:
+      return 3;
+    case CardValue.TWO:
+      return 2;
+  }
+}
+
+export function numberRepToCardValue(value: number): CardValue {
+  switch (value) {
+    case 14:
+      return CardValue.ACE;
+    case 13:
+      return CardValue.KING;
+    case 12:
+      return CardValue.QUEEN;
+    case 11:
+      return CardValue.JACK;
+    case 10:
+      return CardValue.TEN;
+    case 9:
+      return CardValue.NINE;
+    case 8:
+      return CardValue.EIGHT;
+    case 7:
+      return CardValue.SEVEN;
+    case 6:
+      return CardValue.SIX;
+    case 5:
+      return CardValue.FIVE;
+    case 4:
+      return CardValue.FOUR;
+    case 3:
+      return CardValue.THREE;
+    case 2:
+      return CardValue.TWO;
+  }
+}
+
+export function compareArrays(
+  array1: CardValue[],
+  array2: CardValue[]
+): number {
+  if (array1.length !== array2.length) {
+    throw new Error("Arrays must be of the same size");
+  }
+
+  for (let index = 0; index < array1.length; index++) {
+    if (
+      cardValueToNumberRep(array1[index]) > cardValueToNumberRep(array2[index])
+    ) {
+      return 1;
+    } else if (
+      cardValueToNumberRep(array1[index]) < cardValueToNumberRep(array2[index])
+    ) {
+      return -1;
+    }
+  }
+
+  return 0;
 }
