@@ -44,7 +44,7 @@ abstract class APlayer implements IPlayer {
       );
     }
 
-    if (table.maxPlayers >= table.aliveSeatingArrangement.length()) {
+    if (table.maxPlayers === table.aliveSeatingArrangement.length()) {
       throw new Error("Table is already full");
     }
 

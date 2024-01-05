@@ -12,15 +12,15 @@ describe("sum module", () => {
 // startTable tests
 describe("startTable tests", () => {
   // Creating a new instance of MyClass
-  const table = new NLHTable("Table 1", 1000, 1, 2, 5, 10, 8, 50, 2);
+  const table = new NLHTable("Table 1", 1000, 1, 2, 5, 10, 4, 50, 2);
   const player1 = new HumanPlayer("Bebe", 0);
   const player2 = new HumanPlayer("Pepe", 100);
-  player1.joinTable(table);
-  player2.joinTable(table);
 
-  
-  test("start table should throw exceptions", () => {
-    expect(1 + 2).toBe(3);
+  test("not enough players", () => {
+    player1.joinTable(table);
+    player2.joinTable(table);
+
+    expect(() => table.startTable()).toThrow();
   });
 
 });
