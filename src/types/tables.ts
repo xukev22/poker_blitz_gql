@@ -1291,7 +1291,7 @@ class PLOTable extends APokerTable {
 }
 
 // A NLH PokerTable
-class NLHTable extends APokerTable {
+export class NLHTable extends APokerTable {
   constructor(
     name: string,
     startingStack: number,
