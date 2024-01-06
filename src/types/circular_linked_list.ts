@@ -1,3 +1,5 @@
+import { shuffleArray } from "../utils";
+
 // A Node that represents a piece of data and the next node
 class Node<T> {
   data: T;
@@ -143,7 +145,7 @@ export class CircularLinkedList<T> {
     }
 
     let current = this.head;
-    for (let i = 1; i < n; i++) {
+    for (let i = 0; i < n; i++) {
       current = current.next!;
       if (current === this.head) {
         throw new Error(
@@ -198,13 +200,3 @@ export class CircularLinkedList<T> {
     } while (current !== this.head);
   }
 }
-
-// Function to shuffle an array using the Fisher-Yates algorithm
-function shuffleArray<T>(array: T[]): T[] {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-}
-
