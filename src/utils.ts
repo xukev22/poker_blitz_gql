@@ -55,17 +55,19 @@ export function getCurrentBettingHistory(table: IPokerTable): IBetAction[] {
   let bettingHistory: IBetAction[];
   switch (table.bettingStage) {
     case BettingStage.PREFLOP:
-      bettingHistory = this.preFlopBettingHistory;
+      bettingHistory = table.preFlopBettingHistory;
       break;
     case BettingStage.FLOP:
-      bettingHistory = this.flopBettingHistory;
+      bettingHistory = table.flopBettingHistory;
       break;
     case BettingStage.TURN:
-      bettingHistory = this.turnBettingHistory;
+      bettingHistory = table.turnBettingHistory;
       break;
     case BettingStage.RIVER:
-      bettingHistory = this.riverBettingHistory;
+      bettingHistory = table.riverBettingHistory;
       break;
+    default:
+      throw new Error("No active betting phase");
   }
   return bettingHistory;
 }
