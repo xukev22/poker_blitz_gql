@@ -5,3 +5,7 @@ describe("sum module", () => {
     expect(1 + 2).toBe(3);
   });
 });
+
+//jointable
+//leavetab
+//exittable
