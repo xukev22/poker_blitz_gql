@@ -8,13 +8,7 @@ import {
   numberRepToCardValue,
   shuffleArray,
 } from "../src/utils";
-import {
-  Bet,
-  BettingStage,
-  Blind,
-  CardValue,
-  NLHTable,
-} from "../src/types/tables";
+import { BettingStage, Blind, CardValue, NLHTable } from "../src/types/tables";
 
 describe("calculate elo", () => {
   test("placeholder", () => {
