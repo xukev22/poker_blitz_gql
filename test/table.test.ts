@@ -18,7 +18,7 @@ import {HumanPlayer} from '../src/types/players';
 
 
 
-// startTable tests
+// startTable baseline tests
 describe("startTable tests", () => {
   test("Table throws exceptions", () => {
     player1.joinTable(table);
@@ -28,11 +28,19 @@ describe("startTable tests", () => {
     player3.joinTable(table);
     player4.joinTable(table);
     table.startTable();
+    table.aliveSeatingArrangement.forEach((player)=>expect(player.holeCards).toBe(undefined));
+
+
+    expect(table.tableInProgress).toBe(true);
+    expect(table.hand).toBe(0);
+    expect(table.option).toBe(undefined);
+    
+
     expect(() => table.startTable()).toThrow();
   });
 });
 
-// startTable tests
+// startHand baseline tests
 describe("startHand tests", () => {
   test("startHand throws exceptions", () => {
     const newTable = new NLHTable("Table 1", 1000, 1, 2, 5, 10, 4, 50, 2);
@@ -40,13 +48,25 @@ describe("startHand tests", () => {
     player2.joinTable(newTable);
     player3.joinTable(newTable);
     player4.joinTable(newTable);
-  
+
     //throws if game has not started
     expect(() => newTable.startHand()).toThrow();
     newTable.startTable();
+    expect(newTable.hand).toBe(0);
     newTable.startHand();
+    expect(newTable.hand).toBe(1);
+    expect(newTable.handInProgress).toBe(true);
 
+
+    //every player gets 2 cards
     newTable.aliveSeatingArrangement.forEach((player)=>expect(player.holeCards && player.holeCards.length === 2))
 
+    //start hand again throws
+    expect(() => newTable.startHand()).toThrow();
+
+  
+    
   });
 });
+
+
