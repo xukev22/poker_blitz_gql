@@ -3,7 +3,17 @@
 // null representing they are not seated at a table currently
 
 import { calculateNewElo, getCurrentBettingHistory } from "../utils";
-import { Card, Check, Fold, IPokerTable } from "./tables";
+import {
+  BettingStage,
+  Blind,
+  Call,
+  Card,
+  Check,
+  Fold,
+  Bet,
+  IPokerTable,
+  Raise,
+} from "./tables";
 
 // ALL numeric values are integers
 export interface IPlayer {
@@ -16,6 +26,10 @@ export interface IPlayer {
   leaveTableQueue(): void;
   exitTable(): void;
   fold(): void;
+  check(): void;
+  call(): void;
+  bet(amount: number): void;
+  raise(leadRaisedTo: number): void;
 }
 
 // An abstract class for common behavior between different types of players
@@ -104,6 +118,51 @@ abstract class APlayer implements IPlayer {
   }
   // Fold during a poker hand
   fold(): void {
+    this.verifyOption();
+    const bettingHistory = getCurrentBettingHistory(this.table);
+    if (
+      bettingHistory.length > 0 &&
+      !(bettingHistory[bettingHistory.length - 1] instanceof Check)
+    ) {
+      bettingHistory.push(new Fold(this));
+    } else {
+      throw new Error("Cannot fold, should just check");
+    }
+    this.progressTableModel();
+  }
+  private progressTableModel() {
+    if (this.table.isBettingActionDone()) {
+      this.table.advanceBettingAction();
+    } else {
+      let currNode = this.table.aliveSeatingArrangement.find(this).next;
+      for (let i = 0; i < this.table.aliveSeatingArrangement.length(); i++) {
+        const player = currNode.data;
+        const wholeBettingHistory = this.table.preFlopBettingHistory
+          .concat(this.table.flopBettingHistory)
+          .concat(this.table.turnBettingHistory)
+          .concat(this.table.riverBettingHistory);
+        let shouldSkip = false;
+        wholeBettingHistory.forEach((betAction) => {
+          if (betAction.player === player) {
+            if (betAction.allIn || betAction instanceof Fold) {
+              shouldSkip = true;
+            }
+          }
+        });
+
+        if (!shouldSkip) {
+          this.table.option = currNode.data;
+        } else {
+          currNode = currNode.next;
+        }
+      }
+      throw new Error(
+        "Data corruption: could not find next player to pass turn"
+      );
+    }
+  }
+
+  private verifyOption() {
     if (!this.table) {
       throw new Error("Player is not at a table to fold");
     }
@@ -116,26 +175,169 @@ abstract class APlayer implements IPlayer {
     if (this.table.option !== this) {
       throw new Error("It is not this player's turn");
     }
+  }
+
+  check(): void {
+    this.verifyOption();
     const bettingHistory = getCurrentBettingHistory(this.table);
-    if (!(bettingHistory[bettingHistory.length - 1] instanceof Check)) {
-      bettingHistory.push(new Fold(this));
+    if (bettingHistory.length == 0) {
+      bettingHistory.push(new Check(this));
     } else {
-      throw new Error("Cannot fold");
+      const prevBet = bettingHistory[bettingHistory.length - 1];
+      if (prevBet instanceof Check) {
+        bettingHistory.push(new Check(this));
+      } else if (prevBet instanceof Call) {
+        if (BettingStage.PREFLOP) {
+          // find the straddle player
+          const blindsPreflop = this.table.preFlopBettingHistory.filter(
+            (betAction) => betAction instanceof Blind
+          );
+          const stPlayerAmount =
+            blindsPreflop[blindsPreflop.length - 1].getAmount();
+          if (prevBet.amount <= stPlayerAmount) {
+            bettingHistory.push(new Check(this));
+          } else {
+            throw new Error(
+              "Cannot check since the previous bet was a call greater than your straddle blind amount preflop"
+            );
+          }
+        } else {
+          throw new Error(
+            "Cannot check since the previous bet was a call and we are no longer preflop"
+          );
+        }
+      } else {
+        throw new Error(
+          "Cannot check since you can only possibly check after a Call, empty betting history, or Check"
+        );
+      }
     }
-    if (this.table.isBettingActionDone()) {
-      this.table.advanceBettingAction();
+    this.progressTableModel();
+  }
+  call(): void {
+    this.verifyOption();
+    const bettingHistory = getCurrentBettingHistory(this.table);
+    if (bettingHistory.length == 0) {
+      throw new Error("Cannot call, should just check");
     } else {
-      let currNode = this.table.aliveSeatingArrangement.find(this).next;
-      this.table.aliveSeatingArrangement.forEach((player) => {
-        if (currNode.data.stack > 0) {
-          this.table.option = currNode.data;
-          return;
+      const playerInvestments = new Map<IPlayer, number>();
+      bettingHistory.forEach((betAction) => {
+        if (playerInvestments.get(betAction.player)) {
+          playerInvestments.set(
+            betAction.player,
+            playerInvestments.get(betAction.player) + betAction.getAmount()
+          );
+        } else {
+          playerInvestments.set(betAction.player, betAction.getAmount());
         }
       });
-      throw new Error(
-        "Data corruption: could not find next player to pass turn"
+      let bettingLeadInChips = 0;
+      // find betting lead
+      playerInvestments.forEach((chips) => {
+        if (chips > bettingLeadInChips) {
+          bettingLeadInChips = chips;
+        }
+      });
+      let chipsInvestedAlready = 0;
+      // find chips invested before calling
+      bettingHistory.forEach((betAction) => {
+        if (betAction.player === this) {
+          chipsInvestedAlready += betAction.getAmount();
+        }
+      });
+
+      const amountToCall = bettingLeadInChips - chipsInvestedAlready;
+      if (amountToCall <= 0) {
+        throw new Error("Data corruption, amount to call should be positive");
+      }
+
+      bettingHistory.push(
+        new Call(this, amountToCall, amountToCall >= this.stack)
       );
+
+      this.stack -= amountToCall;
+      if (this.stack < 0) {
+        this.stack = 0;
+      }
     }
+    this.progressTableModel();
+  }
+  bet(amount: number): void {
+    this.verifyOption();
+    if (amount <= 0) {
+      throw new Error("Amount must be positive");
+    }
+    if (amount < this.table.currentST) {
+      throw new Error("Amount must be at least the straddle blind amount");
+    }
+    if (amount > this.stack) {
+      throw new Error("You do not have this many chips to bet out");
+    }
+    const bettingHistory = getCurrentBettingHistory(this.table);
+    if (bettingHistory.length == 0) {
+      bettingHistory.push(new Bet(this, amount, amount == this.stack));
+      this.stack -= amount;
+    } else {
+      let existingBetInstance = false;
+      bettingHistory.forEach((betAction) => {
+        if (betAction instanceof Bet) {
+          existingBetInstance = true;
+        }
+      });
+      if (existingBetInstance) {
+        throw new Error(
+          "Cannot bet out since there is already a bet, should raise, call, or fold instead"
+        );
+      } else {
+        bettingHistory.push(new Bet(this, amount, amount == this.stack));
+        this.stack -= amount;
+      }
+    }
+    this.progressTableModel();
+  }
+  raise(leadRaisedTo: number): void {
+    this.verifyOption();
+    const bettingHistory = getCurrentBettingHistory(this.table);
+    const playerInvestments = new Map<IPlayer, number>();
+    let bettingLeadInChips = 0;
+    // find betting lead
+    playerInvestments.forEach((chips) => {
+      if (chips > bettingLeadInChips) {
+        bettingLeadInChips = chips;
+      }
+    });
+    let chipsInvestedAlready = 0;
+    // find chips invested before calling
+    bettingHistory.forEach((betAction) => {
+      if (betAction.player === this) {
+        chipsInvestedAlready += betAction.getAmount();
+      }
+    });
+    if (leadRaisedTo <= bettingLeadInChips) {
+      throw new Error("New betting lead must surpass the current betting lead");
+    }
+    const amountToAdd = leadRaisedTo - chipsInvestedAlready;
+    if (amountToAdd > this.stack) {
+      throw new Error("You do not have this many chips to raise");
+    }
+
+    let existingBetOrBlindInstance = false;
+    bettingHistory.forEach((betAction) => {
+      if (betAction instanceof Bet || betAction instanceof Blind) {
+        existingBetOrBlindInstance = true;
+      }
+    });
+
+    if (existingBetOrBlindInstance) {
+      bettingHistory.push(
+        new Raise(this, amountToAdd, amountToAdd == this.stack)
+      );
+      this.stack -= amountToAdd;
+    } else {
+      throw new Error("Nothing to raise since there is no initial bet out");
+    }
+
+    this.progressTableModel();
   }
 }
 

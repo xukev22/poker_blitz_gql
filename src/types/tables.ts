@@ -348,6 +348,7 @@ abstract class APokerTable implements IPokerTable {
   }
   // advance the betting action based on the current game state
   advanceBettingAction(): void {
+    delete this.option;
     let foldCount = 0;
     const wholeBettingHistory = this.preFlopBettingHistory
       .concat(this.flopBettingHistory)
@@ -1325,6 +1326,7 @@ export interface IBetAction {
 }
 
 // the interface adds an amount to the BetAction if needed
+// all amounts are the amount (more) of chips put in
 interface IBetActionWithAmount extends IBetAction {
   amount: number;
 }
@@ -1347,6 +1349,11 @@ export class Bet implements IBetActionWithAmount {
   getAmount() {
     return this.amount;
   }
+  constructor(player: IPlayer, amount: number, allIn: boolean) {
+    this.allIn = allIn;
+    this.player = player;
+    this.amount = amount;
+  }
 }
 
 // Can call a blind, bet, or raise in the past
@@ -1356,6 +1363,11 @@ export class Call implements IBetActionWithAmount {
   amount: number;
   getAmount() {
     return this.amount;
+  }
+  constructor(player: IPlayer, amount: number, allIn: boolean) {
+    this.allIn = allIn;
+    this.player = player;
+    this.amount = amount;
   }
 }
 
@@ -1367,6 +1379,11 @@ export class Raise implements IBetActionWithAmount {
   getAmount() {
     return this.amount;
   }
+  constructor(player: IPlayer, amount: number, allIn: boolean) {
+    this.allIn = allIn;
+    this.player = player;
+    this.amount = amount;
+  }
 }
 
 // Can check as largest blind if limped around preflop or at the
@@ -1376,6 +1393,10 @@ export class Check implements IBetAction {
   player: IPlayer;
   getAmount() {
     return 0;
+  }
+  constructor(player: IPlayer) {
+    this.allIn = false;
+    this.player = player;
   }
 }
 
