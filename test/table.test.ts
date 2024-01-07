@@ -43,29 +43,21 @@ describe("startTable tests", () => {
 // startHand baseline tests
 describe("startHand tests", () => {
   test("startHand throws exceptions", () => {
-    const newTable = new NLHTable("Table 1", 1000, 1, 2, 5, 10, 4, 50, 2);
-    player1.joinTable(newTable);
-    player2.joinTable(newTable);
-    player3.joinTable(newTable);
-    player4.joinTable(newTable);
 
     //throws if game has not started
-    expect(() => newTable.startHand()).toThrow();
-    newTable.startTable();
-    expect(newTable.hand).toBe(0);
-    newTable.startHand();
-    expect(newTable.hand).toBe(1);
-    expect(newTable.handInProgress).toBe(true);
+    expect(() => table.startHand()).toThrow();
+    table.startTable();
+    expect(table.hand).toBe(0);
+    table.startHand();
+    expect(table.hand).toBe(1);
+    expect(table.handInProgress).toBe(true);
 
 
     //every player gets 2 cards
-    newTable.aliveSeatingArrangement.forEach((player)=>expect(player.holeCards && player.holeCards.length === 2))
+    table.aliveSeatingArrangement.forEach((player)=>expect(player.holeCards && player.holeCards.length === 2))
 
     //start hand again throws
-    expect(() => newTable.startHand()).toThrow();
-
-  
-    
+    expect(() => table.startHand()).toThrow();
   });
 });
 
