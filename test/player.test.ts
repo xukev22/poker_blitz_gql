@@ -20,12 +20,15 @@ beforeEach(() => {
 
 describe("joinTable", () => {
   test("exceptions", () => {
+    // table in progress
     table.tableInProgress = true;
     expect(() => player1.joinTable(table)).toThrow();
     table.tableInProgress = false;
+    // already at table
     player1.table = table;
     expect(() => player1.joinTable(table)).toThrow();
     delete player1.table;
+    // full table
     player1.joinTable(table);
     player2.joinTable(table);
     player3.joinTable(table);
@@ -34,16 +37,118 @@ describe("joinTable", () => {
   });
 
   test("observe actual join behavior", () => {
+    // before
     expect(player1.table).toBe(undefined);
     expect(table.aliveSeatingArrangement.length()).toBe(0);
     expect(table.startingElos).toStrictEqual([]);
+    //join table
     player1.joinTable(table);
+    // after
     expect(player1.table).toBe(table);
     expect(table.aliveSeatingArrangement.length()).toBe(1);
     expect(table.startingElos).toStrictEqual([1100]);
   });
 });
 
-//jointable
-//leavetab
-//exittable
+describe("leaveTableQueue", () => {
+  test("exceptions", () => {
+    // not at table
+    expect(() => player1.leaveTableQueue()).toThrow();
+    // table already started
+    table.tableInProgress = true;
+    expect(() => player1.leaveTableQueue()).toThrow();
+    table.tableInProgress = false;
+    delete player1.table;
+  });
+  test("observe actual behaviors", () => {
+    player1.joinTable(table);
+    player2.joinTable(table);
+    player3.joinTable(table);
+
+    // before
+    expect(table.aliveSeatingArrangement.length()).toBe(3);
+    expect(table.startingElos).toStrictEqual([1100, 1200, 1200]);
+    expect(player2.table).toBe(table);
+
+    // p2 leaves queue
+    player2.leaveTableQueue();
+
+    // after
+    expect(table.aliveSeatingArrangement.length()).toBe(2);
+    expect(table.startingElos).toStrictEqual([1100, 1200]);
+    expect(player2.table).toBe(undefined);
+
+    // p1 leaves queue
+    player1.leaveTableQueue();
+
+    // after
+    expect(table.aliveSeatingArrangement.length()).toBe(1);
+    expect(table.startingElos).toStrictEqual([1200]);
+    expect(player1.table).toBe(undefined);
+
+    // p3 leaves queue
+    player3.leaveTableQueue();
+
+    // after
+    expect(table.aliveSeatingArrangement.length()).toBe(0);
+    expect(table.startingElos).toStrictEqual([]);
+    expect(player3.table).toBe(undefined);
+  });
+});
+
+describe("exitTable", () => {
+  test("exceptions", () => {
+    // player is not at a table to exit
+    expect(() => player1.exitTable()).toThrow();
+    player1.joinTable(table);
+    // player is at table but cannot exit since it hasn't started
+    expect(() => player1.exitTable()).toThrow();
+    player1.leaveTableQueue();
+    player1.joinTable(table);
+    player2.joinTable(table);
+    player3.joinTable(table);
+    player4.joinTable(table);
+    table.startTable();
+    table.startHand();
+    // hand in progress cant exit
+    expect(() => player1.exitTable()).toThrow();
+  });
+  test("non forfeit case", () => {
+    player1.joinTable(table);
+    player2.joinTable(table);
+    player3.joinTable(table);
+    player4.joinTable(table);
+    table.startTable();
+    player4.stack = 0;
+
+    // before
+    expect(table.aliveSeatingArrangement.length()).toBe(4);
+    expect(player4.table).toBe(table);
+
+    // exit table
+    player4.exitTable();
+
+    // after
+    expect(table.aliveSeatingArrangement.length()).toBe(3);
+    expect(player4.table).toBe(undefined);
+  });
+  test("forfeit case", () => {
+    player1.joinTable(table);
+    player2.joinTable(table);
+    player3.joinTable(table);
+    player4.joinTable(table);
+    table.startTable();
+
+    // before
+    expect(table.aliveSeatingArrangement.length()).toBe(4);
+    expect(player4.table).toBe(table);
+
+    // exit table
+    player4.exitTable();
+
+    // after
+    expect(table.aliveSeatingArrangement.length()).toBe(3);
+    expect(player4.table).toBe(undefined);
+    expect(player4.elo != 1400);
+  });
+});
