@@ -138,9 +138,15 @@ abstract class APlayer implements IPlayer {
       for (let i = 0; i < this.table.aliveSeatingArrangement.length(); i++) {
         const player = currNode.data;
         const wholeBettingHistory = this.table.preFlopBettingHistory
-          .concat(this.table.flopBettingHistory)
-          .concat(this.table.turnBettingHistory)
-          .concat(this.table.riverBettingHistory);
+          .concat(
+            this.table.flopBettingHistory ? this.table.flopBettingHistory : []
+          )
+          .concat(
+            this.table.turnBettingHistory ? this.table.turnBettingHistory : []
+          )
+          .concat(
+            this.table.riverBettingHistory ? this.table.riverBettingHistory : []
+          );
         let shouldSkip = false;
         wholeBettingHistory.forEach((betAction) => {
           if (betAction.player === player) {

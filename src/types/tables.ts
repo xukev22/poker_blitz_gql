@@ -351,9 +351,9 @@ abstract class APokerTable implements IPokerTable {
     delete this.option;
     let foldCount = 0;
     const wholeBettingHistory = this.preFlopBettingHistory
-      .concat(this.flopBettingHistory)
-      .concat(this.turnBettingHistory)
-      .concat(this.riverBettingHistory);
+      .concat(this.flopBettingHistory ? this.flopBettingHistory : [])
+      .concat(this.turnBettingHistory ? this.turnBettingHistory : [])
+      .concat(this.riverBettingHistory ? this.riverBettingHistory : []);
     wholeBettingHistory.forEach((betAction) => {
       if (betAction instanceof Fold) {
         foldCount++;
@@ -440,6 +440,11 @@ abstract class APokerTable implements IPokerTable {
     const fullDeck = generateDeck();
     let usedHoleCards: Card[] = [];
     this.aliveSeatingArrangement.forEach((player) => {
+      if (!player.holeCards) {
+        throw new Error(
+          "Data corruption: player should have hole cards when this is called"
+        );
+      }
       usedHoleCards.concat(player.holeCards);
     });
     const unusedDeck: Card[] = fullDeck.filter(
@@ -461,6 +466,11 @@ abstract class APokerTable implements IPokerTable {
     const fullDeck = generateDeck();
     let usedHoleCards: Card[] = [];
     this.aliveSeatingArrangement.forEach((player) => {
+      if (!player.holeCards) {
+        throw new Error(
+          "Data corruption: player should have hole cards when this is called"
+        );
+      }
       usedHoleCards.concat(player.holeCards);
     });
     usedHoleCards.concat(this.flop || []);
@@ -483,6 +493,11 @@ abstract class APokerTable implements IPokerTable {
     const fullDeck = generateDeck();
     let usedHoleCards: Card[] = [];
     this.aliveSeatingArrangement.forEach((player) => {
+      if (!player.holeCards) {
+        throw new Error(
+          "Data corruption: player should have hole cards when this is called"
+        );
+      }
       usedHoleCards.concat(player.holeCards);
     });
     usedHoleCards.concat(this.flop || []);
@@ -623,9 +638,9 @@ abstract class APokerTable implements IPokerTable {
   private determineWinnersAndHowMuch(): { player: IPlayer; chips: number }[] {
     // get whole betting history
     const wholeBettingHistory = this.preFlopBettingHistory
-      .concat(this.flopBettingHistory)
-      .concat(this.turnBettingHistory)
-      .concat(this.riverBettingHistory);
+      .concat(this.flopBettingHistory ? this.flopBettingHistory : [])
+      .concat(this.turnBettingHistory ? this.turnBettingHistory : [])
+      .concat(this.riverBettingHistory ? this.riverBettingHistory : []);
     // get all the players at showdown
     const playersAtShowdown = this.aliveSeatingArrangement.clone();
     const playersAtShowdownInvestment: {
@@ -946,9 +961,14 @@ abstract class APokerTable implements IPokerTable {
   }
   // NOTE does not support PLO override yet
   protected calculateBestPlayerHand(holeCards: Card[]): IHand {
+    if (!this.flop || !this.turn || !this.river || !holeCards) {
+      throw new Error(
+        "Data corruption: Flop, turn, river, and hole cards should be present"
+      );
+    }
     const boardAndHoleCards = this.flop
-      .concat(this.turn)
-      .concat(this.river)
+      .concat([this.turn])
+      .concat([this.river])
       .concat(holeCards);
     let spadeCount = 0;
     let clubCount = 0;
