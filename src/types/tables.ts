@@ -44,6 +44,7 @@ export interface IPokerTable {
   startHand(): void;
   isBettingActionDone(): boolean;
   advanceBettingAction(): void;
+  advanceTurn(): void;
 }
 
 // Common methods and fields for implementations of a poker table
@@ -434,6 +435,33 @@ abstract class APokerTable implements IPokerTable {
     } else if (this.bettingStage === BettingStage.RIVER) {
       this.endHand();
     }
+  }
+  // advance the turn based on the current game state, might want to throw if this.option not exist
+  advanceTurn(): void {
+    let currNode = this.aliveSeatingArrangement.find(this.option).next;
+    const wholeBettingHistory = this.preFlopBettingHistory
+      .concat(this.flopBettingHistory ? this.flopBettingHistory : [])
+      .concat(this.turnBettingHistory ? this.turnBettingHistory : [])
+      .concat(this.riverBettingHistory ? this.riverBettingHistory : []);
+    for (let i = 0; i < this.aliveSeatingArrangement.length(); i++) {
+      const player = currNode.data;
+      let shouldSkip = false;
+      wholeBettingHistory.forEach((betAction) => {
+        if (betAction.player === player) {
+          if (betAction.allIn || betAction instanceof Fold) {
+            shouldSkip = true;
+          }
+        }
+      });
+
+      if (!shouldSkip) {
+        this.option = currNode.data;
+        return;
+      } else {
+        currNode = currNode.next;
+      }
+    }
+    throw new Error("Data corruption: could not find next player to pass turn");
   }
   // deal unique flop (no hole cards)
   private dealUniqueFlop(): void {

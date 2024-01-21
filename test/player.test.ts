@@ -9,6 +9,14 @@ let player3: IPlayer;
 let player4: IPlayer;
 let player5: IPlayer;
 
+let tableStarted: IPokerTable;
+let player10: IPlayer;
+let player20: IPlayer;
+let player30: IPlayer;
+let player40: IPlayer;
+let player50: IPlayer;
+let player60: IPlayer;
+
 beforeEach(() => {
   table = new NLHTable("Gang On Em", 100, 1, 2, 5, 10, 4);
   player1 = new HumanPlayer("Player 1", 1100);
@@ -16,6 +24,8 @@ beforeEach(() => {
   player3 = new HumanPlayer("Player 3", 1200);
   player4 = new HumanPlayer("Player 4", 1400);
   player5 = new HumanPlayer("Player 5", 1500);
+
+  tableStarted = new NLHTable("6 max table!", 100, 1, 2, 5, 10, 6, 5, 2);
 });
 
 describe("joinTable", () => {
@@ -152,3 +162,98 @@ describe("exitTable", () => {
     expect(player4.elo != 1400);
   });
 });
+
+describe("verifyAction", () => {
+  test("fold", () => {
+    // not at table
+    expect(() => player1.fold()).toThrow();
+    player1.joinTable(table);
+    player2.joinTable(table);
+
+    // at table, but table not started
+    expect(() => player1.fold()).toThrow();
+
+    // at table and table started, but hand not started
+    table.tableInProgress = true;
+    expect(() => player1.fold()).toThrow();
+
+    table.handInProgress = true;
+    table.option = player2;
+    // at table and hand/table started, option not p1
+    expect(() => player1.fold()).toThrow();
+  });
+  test("check", () => {
+    // not at table
+    expect(() => player1.check()).toThrow();
+    player1.joinTable(table);
+    player2.joinTable(table);
+
+    // at table, but table not started
+    expect(() => player1.check()).toThrow();
+
+    // at table and table started, but hand not started
+    table.tableInProgress = true;
+    expect(() => player1.check()).toThrow();
+
+    table.handInProgress = true;
+    table.option = player2;
+    // at table and hand/table started, option not p1
+    expect(() => player1.check()).toThrow();
+  });
+  test("bet", () => {
+    // not at table
+    expect(() => player1.bet(5)).toThrow();
+    player1.joinTable(table);
+    player2.joinTable(table);
+
+    // at table, but table not started
+    expect(() => player1.bet(5)).toThrow();
+
+    // at table and table started, but hand not started
+    table.tableInProgress = true;
+    expect(() => player1.bet(5)).toThrow();
+
+    table.handInProgress = true;
+    table.option = player2;
+    // at table and hand/table started, option not p1
+    expect(() => player1.bet(5)).toThrow();
+  });
+  test("call", () => {
+    // not at table
+    expect(() => player1.call()).toThrow();
+    player1.joinTable(table);
+    player2.joinTable(table);
+
+    // at table, but table not started
+    expect(() => player1.call()).toThrow();
+
+    // at table and table started, but hand not started
+    table.tableInProgress = true;
+    expect(() => player1.call()).toThrow();
+
+    table.handInProgress = true;
+    table.option = player2;
+    // at table and hand/table started, option not p1
+    expect(() => player1.call()).toThrow();
+  });
+  test("raise", () => {
+    // not at table
+    expect(() => player1.raise(5)).toThrow();
+    player1.joinTable(table);
+    player2.joinTable(table);
+
+    // at table, but table not started
+    expect(() => player1.raise(5)).toThrow();
+
+    // at table and table started, but hand not started
+    table.tableInProgress = true;
+    expect(() => player1.raise(5)).toThrow();
+
+    table.handInProgress = true;
+    table.option = player2;
+    // at table and hand/table started, option not p1
+    expect(() => player1.raise(5)).toThrow();
+  });
+});
+
+describe("fold", () => {});
