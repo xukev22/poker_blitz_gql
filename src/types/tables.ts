@@ -332,6 +332,11 @@ abstract class APokerTable implements IPokerTable {
         tempState.consecutiveChecks = 0;
         tempState.playersThatMatchOrFoldBettingLead++;
         tempState.playersThatCanAct--;
+      } else if (betAction instanceof Blind) {
+        if (betAction.getAmount() >= tempState.bettingLead.getAmount()) {
+          tempState.bettingLead = betAction;
+        }
+        tempState.consecutiveChecks = 0;
       } else {
         throw new Error("How did I get here, BAD BAD BAD");
       }
