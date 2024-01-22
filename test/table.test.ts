@@ -1,18 +1,20 @@
 import { describe, expect, test, beforeEach } from "@jest/globals";
-import {NLHTable} from '../src/types/tables';
+import {IPokerTable, NLHTable} from '../src/types/tables';
 import {HumanPlayer, IPlayer} from '../src/types/players';
+import { Console } from "console";
 
-  let table;
-  let player1;
-  let player2;
-  let player3;
-  let player4;
+  let table: IPokerTable;
+  let player1: IPlayer;
+  let player2: IPlayer;
+  let player3: IPlayer;
+  let player4: IPlayer;
 
   //creates table, players, and players join table
   beforeEach(() => {
-    //handsUntilBlindsIncrease: 3
+    //blinds: 1, 2, 5
+    //handsUntilBlindsIncrease: 2
     //blindIncreaseRatio: 2
-    table = new NLHTable("Table 1", 1000, 1, 2, 5, 10, 4, 3, 2);
+    table = new NLHTable("Table 1", 1000, 1, 2, 5, 10, 4, 2, 2);
     player1 = new HumanPlayer("Bebe", 0);
     player2 = new HumanPlayer("Pepe", 100);
     player3 = new HumanPlayer("Bobby", 500);
@@ -74,10 +76,31 @@ describe("blind tests", () => {
     table.startHand();
     expect(table.hand).toBe(1);
     expect(table.handInProgress).toBe(true);
+    //check blind size
+    expect(table.currentSB).toBe(1);
+    expect(table.currentBB).toBe(2);
+    expect(table.currentST).toBe(5);
+    //check betting history
+    if (table.preFlopBettingHistory != undefined) {
+      expect(table.preFlopBettingHistory[0].getAmount()).toBe(1);
+      expect(table.preFlopBettingHistory[1].getAmount()).toBe(2);
+      expect(table.preFlopBettingHistory[2].getAmount()).toBe(5);
+    }
+    else {
+      throw new Error("undefined"); 
+    }
+    console.log(table.preFlopBettingHistory);
 
-    let expectedSmallBlind: HumanPlayer = table.aliveSeatingArrangement[0];
 
-    
+    expect(table.aliveSeatingArrangement.getNthElement(3)?.data).toBe(table.option);
+
+    console.log(table.aliveSeatingArrangement.getNthElement(3)?.data.username + " This guy");
+    table.aliveSeatingArrangement.getNthElement(3)?.data.fold();
+    //console.log("after the fold" + table.preFlopBettingHistory);
+
+
+    //next hand
+
   })
 })
 
