@@ -26,6 +26,22 @@ beforeEach(() => {
   player5 = new HumanPlayer("Player 5", 1500);
 
   tableStarted = new NLHTable("6 max table!", 100, 1, 2, 5, 10, 6, 5, 2);
+  player10 = new HumanPlayer("Player 10", 1100);
+  player20 = new HumanPlayer("Player 20", 1200);
+  player30 = new HumanPlayer("Player 30", 1300);
+  player40 = new HumanPlayer("Player 40", 1400);
+  player50 = new HumanPlayer("Player 50", 1500);
+  player60 = new HumanPlayer("Player 60", 1600);
+
+  player10.joinTable(tableStarted);
+  player20.joinTable(tableStarted);
+  player30.joinTable(tableStarted);
+  player40.joinTable(tableStarted);
+  player50.joinTable(tableStarted);
+  player60.joinTable(tableStarted);
+
+  tableStarted.startTable();
+  tableStarted.startHand();
 });
 
 describe("joinTable", () => {
@@ -256,4 +272,9 @@ describe("verifyAction", () => {
   });
 });
 
-describe("fold", () => {});
+describe("fold", () => {
+  test("cannot fold", () => {
+    console.log(tableStarted.option);
+    console.log(tableStarted.preFlopBettingHistory);
+  });
+});
