@@ -44,6 +44,7 @@ export interface IPokerTable {
   startHand(): void;
   isBettingActionDone(): boolean;
   advanceBettingAction(): void;
+  advanceTurn(): void;
 }
 
 // Common methods and fields for implementations of a poker table
@@ -351,9 +352,9 @@ abstract class APokerTable implements IPokerTable {
     delete this.option;
     let foldCount = 0;
     const wholeBettingHistory = this.preFlopBettingHistory
-      .concat(this.flopBettingHistory)
-      .concat(this.turnBettingHistory)
-      .concat(this.riverBettingHistory);
+      .concat(this.flopBettingHistory ? this.flopBettingHistory : [])
+      .concat(this.turnBettingHistory ? this.turnBettingHistory : [])
+      .concat(this.riverBettingHistory ? this.riverBettingHistory : []);
     wholeBettingHistory.forEach((betAction) => {
       if (betAction instanceof Fold) {
         foldCount++;
@@ -435,11 +436,43 @@ abstract class APokerTable implements IPokerTable {
       this.endHand();
     }
   }
+  // advance the turn based on the current game state, might want to throw if this.option not exist
+  advanceTurn(): void {
+    let currNode = this.aliveSeatingArrangement.find(this.option).next;
+    const wholeBettingHistory = this.preFlopBettingHistory
+      .concat(this.flopBettingHistory ? this.flopBettingHistory : [])
+      .concat(this.turnBettingHistory ? this.turnBettingHistory : [])
+      .concat(this.riverBettingHistory ? this.riverBettingHistory : []);
+    for (let i = 0; i < this.aliveSeatingArrangement.length(); i++) {
+      const player = currNode.data;
+      let shouldSkip = false;
+      wholeBettingHistory.forEach((betAction) => {
+        if (betAction.player === player) {
+          if (betAction.allIn || betAction instanceof Fold) {
+            shouldSkip = true;
+          }
+        }
+      });
+
+      if (!shouldSkip) {
+        this.option = currNode.data;
+        return;
+      } else {
+        currNode = currNode.next;
+      }
+    }
+    throw new Error("Data corruption: could not find next player to pass turn");
+  }
   // deal unique flop (no hole cards)
   private dealUniqueFlop(): void {
     const fullDeck = generateDeck();
     let usedHoleCards: Card[] = [];
     this.aliveSeatingArrangement.forEach((player) => {
+      if (!player.holeCards) {
+        throw new Error(
+          "Data corruption: player should have hole cards when this is called"
+        );
+      }
       usedHoleCards.concat(player.holeCards);
     });
     const unusedDeck: Card[] = fullDeck.filter(
@@ -461,6 +494,11 @@ abstract class APokerTable implements IPokerTable {
     const fullDeck = generateDeck();
     let usedHoleCards: Card[] = [];
     this.aliveSeatingArrangement.forEach((player) => {
+      if (!player.holeCards) {
+        throw new Error(
+          "Data corruption: player should have hole cards when this is called"
+        );
+      }
       usedHoleCards.concat(player.holeCards);
     });
     usedHoleCards.concat(this.flop || []);
@@ -483,6 +521,11 @@ abstract class APokerTable implements IPokerTable {
     const fullDeck = generateDeck();
     let usedHoleCards: Card[] = [];
     this.aliveSeatingArrangement.forEach((player) => {
+      if (!player.holeCards) {
+        throw new Error(
+          "Data corruption: player should have hole cards when this is called"
+        );
+      }
       usedHoleCards.concat(player.holeCards);
     });
     usedHoleCards.concat(this.flop || []);
@@ -623,9 +666,9 @@ abstract class APokerTable implements IPokerTable {
   private determineWinnersAndHowMuch(): { player: IPlayer; chips: number }[] {
     // get whole betting history
     const wholeBettingHistory = this.preFlopBettingHistory
-      .concat(this.flopBettingHistory)
-      .concat(this.turnBettingHistory)
-      .concat(this.riverBettingHistory);
+      .concat(this.flopBettingHistory ? this.flopBettingHistory : [])
+      .concat(this.turnBettingHistory ? this.turnBettingHistory : [])
+      .concat(this.riverBettingHistory ? this.riverBettingHistory : []);
     // get all the players at showdown
     const playersAtShowdown = this.aliveSeatingArrangement.clone();
     const playersAtShowdownInvestment: {
@@ -946,9 +989,14 @@ abstract class APokerTable implements IPokerTable {
   }
   // NOTE does not support PLO override yet
   protected calculateBestPlayerHand(holeCards: Card[]): IHand {
+    if (!this.flop || !this.turn || !this.river || !holeCards) {
+      throw new Error(
+        "Data corruption: Flop, turn, river, and hole cards should be present"
+      );
+    }
     const boardAndHoleCards = this.flop
-      .concat(this.turn)
-      .concat(this.river)
+      .concat([this.turn])
+      .concat([this.river])
       .concat(holeCards);
     let spadeCount = 0;
     let clubCount = 0;

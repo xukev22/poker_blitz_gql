@@ -128,39 +128,45 @@ abstract class APlayer implements IPlayer {
     } else {
       throw new Error("Cannot fold, should just check");
     }
-    this.progressTableModel();
+    // this.progressTableModel();
   }
-  private progressTableModel() {
-    if (this.table.isBettingActionDone()) {
-      this.table.advanceBettingAction();
-    } else {
-      let currNode = this.table.aliveSeatingArrangement.find(this).next;
-      for (let i = 0; i < this.table.aliveSeatingArrangement.length(); i++) {
-        const player = currNode.data;
-        const wholeBettingHistory = this.table.preFlopBettingHistory
-          .concat(this.table.flopBettingHistory)
-          .concat(this.table.turnBettingHistory)
-          .concat(this.table.riverBettingHistory);
-        let shouldSkip = false;
-        wholeBettingHistory.forEach((betAction) => {
-          if (betAction.player === player) {
-            if (betAction.allIn || betAction instanceof Fold) {
-              shouldSkip = true;
-            }
-          }
-        });
+  // private progressTableModel() {
+  //   if (this.table.isBettingActionDone()) {
+  //     this.table.advanceBettingAction();
+  //   } else {
+  //     let currNode = this.table.aliveSeatingArrangement.find(this).next;
+  //     for (let i = 0; i < this.table.aliveSeatingArrangement.length(); i++) {
+  //       const player = currNode.data;
+  //       const wholeBettingHistory = this.table.preFlopBettingHistory
+  //         .concat(
+  //           this.table.flopBettingHistory ? this.table.flopBettingHistory : []
+  //         )
+  //         .concat(
+  //           this.table.turnBettingHistory ? this.table.turnBettingHistory : []
+  //         )
+  //         .concat(
+  //           this.table.riverBettingHistory ? this.table.riverBettingHistory : []
+  //         );
+  //       let shouldSkip = false;
+  //       wholeBettingHistory.forEach((betAction) => {
+  //         if (betAction.player === player) {
+  //           if (betAction.allIn || betAction instanceof Fold) {
+  //             shouldSkip = true;
+  //           }
+  //         }
+  //       });
 
-        if (!shouldSkip) {
-          this.table.option = currNode.data;
-        } else {
-          currNode = currNode.next;
-        }
-      }
-      throw new Error(
-        "Data corruption: could not find next player to pass turn"
-      );
-    }
-  }
+  //       if (!shouldSkip) {
+  //         this.table.option = currNode.data;
+  //       } else {
+  //         currNode = currNode.next;
+  //       }
+  //     }
+  //     throw new Error(
+  //       "Data corruption: could not find next player to pass turn"
+  //     );
+  //   }
+  // }
 
   private verifyOption() {
     if (!this.table) {
@@ -212,7 +218,7 @@ abstract class APlayer implements IPlayer {
         );
       }
     }
-    this.progressTableModel();
+    // this.progressTableModel();
   }
   call(): void {
     this.verifyOption();
@@ -260,7 +266,7 @@ abstract class APlayer implements IPlayer {
         this.stack = 0;
       }
     }
-    this.progressTableModel();
+    // this.progressTableModel();
   }
   bet(amount: number): void {
     this.verifyOption();
@@ -293,7 +299,7 @@ abstract class APlayer implements IPlayer {
         this.stack -= amount;
       }
     }
-    this.progressTableModel();
+    // this.progressTableModel();
   }
   raise(leadRaisedTo: number): void {
     this.verifyOption();
@@ -337,7 +343,7 @@ abstract class APlayer implements IPlayer {
       throw new Error("Nothing to raise since there is no initial bet out");
     }
 
-    this.progressTableModel();
+    // this.progressTableModel();
   }
 }
 
